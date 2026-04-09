@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "name": "Arjun Blaze",
+    "role": "batsman",
+    "basePrice": 8,
+    "batting": {
+      "aggression": 8,
+      "consistency": 7
+    },
+    "bowling": {
+      "economy": 2,
+      "wicketTaking": 2
+    }
+  },
+  {
+    "id": 2,
+    "name": "Ravi Swing",
+    "role": "bowler",
+    "basePrice": 7,
+    "batting": {
+      "aggression": 3,
+      "consistency": 4
+    },
+    "bowling": {
+      "economy": 8,
+      "wicketTaking": 8
+    }
+  },
+  {
+    "id": 3,
+    "name": "Kabir Storm",
+    "role": "all-rounder",
+    "basePrice": 10,
+    "batting": {
+      "aggression": 7,
+      "consistency": 6
+    },
+    "bowling": {
+      "economy": 7,
+      "wicketTaking": 6
+    }
+  }
+]
