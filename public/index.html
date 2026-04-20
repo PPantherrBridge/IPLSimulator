@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LPL Scorer - Create Match</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>🏏 LPL Scorer</h1>
+      <p class="subtitle">Create Team A and Team B, then start scoring live.</p>
+
+      <section class="panel">
+        <h2>Create Match</h2>
+        <form id="createMatchForm" class="form-grid">
+          <label>
+            Team A Name
+            <input id="teamAName" required placeholder="Team A" />
+          </label>
+          <label>
+            Team B Name
+            <input id="teamBName" required placeholder="Team B" />
+          </label>
+          <label class="full-width">
+            Team A Players (comma separated)
+            <textarea id="teamAPlayers" rows="4" placeholder="Player 1, Player 2, Player 3" required></textarea>
+          </label>
+          <label class="full-width">
+            Team B Players (comma separated)
+            <textarea id="teamBPlayers" rows="4" placeholder="Player 1, Player 2, Player 3" required></textarea>
+          </label>
+          <button type="submit" class="full-width">Create Match</button>
+        </form>
+      </section>
+
+      <p id="status" class="status"></p>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
