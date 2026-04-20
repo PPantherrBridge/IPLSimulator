@@ -1,0 +1,12 @@
+{
+  "name": "lpl-scorer",
+  "version": "1.0.0",
+  "description": "Web-based cricket scoring app deployable on Render",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
