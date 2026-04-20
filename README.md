@@ -1,39 +1,45 @@
 # LPL Scorer
 
-LPL Scorer is a complete cricket league web app built with:
-- **Backend:** Node.js + Express
-- **Frontend:** HTML, CSS, Vanilla JavaScript
-- **Storage:** Local JSON files (`data/teams.json`, `data/players.json`)
+LPL Scorer is a simple web-based cricket scoring application built with **Node.js + Express + HTML/CSS/Vanilla JavaScript** and local JSON storage.
 
-## Features
+It supports:
+- Team and player entry on the home page
+- Match creation (Team A vs Team B)
+- Live scoring buttons (`0,1,2,3,4,6,W,WD,NB`)
+- Automatic updates for score, wickets, overs
+- Batter strike rate and bowler economy updates
+- Local storage in `data/match.json`
 
-- Team CRUD (create, edit, delete)
-- Player CRUD (create, edit, delete)
-- Player ratings with range **1–100**
-- Structured stats model:
-  - `stats.batting` → runs, balls, fours, sixes, outs
-  - `stats.bowling` → balls, runs, wickets, dots, wides, noballs
-  - `stats.fielding` → catches, runouts, stumpings
-- Release Player flow (team → auction pool)
-- Auction card UI:
-  - Shows name, P, C, current bid, bidding team
-  - Place bid + mark player SOLD
-- Game Mode:
-  - Select Team + Player
-  - Save selection in `localStorage`
+## Project Structure
 
-## Render Compatibility
-
-This app works on Render without code changes:
-- Uses `process.env.PORT || 3000`
-- Start command: `node server.js`
-- Static files served from `public`
+- `server.js`
+- `package.json`
+- `public/`
+  - `index.html`
+  - `match.html`
+  - `styles.css`
+  - `script.js`
+- `data/`
+  - `match.json`
 
 ## Run Locally
 
-```bash
-npm install
-npm start
-```
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Start the server:
+   ```bash
+   npm start
+   ```
+3. Open in your browser:
+   ```
+   http://localhost:3000
+   ```
 
-Open: `http://localhost:3000`
+## Render Deployment
+
+This app is ready for Render with no code changes:
+- Uses `process.env.PORT || 3000`
+- Start command is `node server.js`
+- Static files are served from `public/`

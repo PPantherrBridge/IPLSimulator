@@ -1,7 +1,7 @@
 {
-  "name": "lpl-scorer",
+  "name": "ipl-local-simulator",
   "version": "1.0.0",
-  "description": "Web-based cricket scoring app deployable on Render",
+  "description": "Local web-based cricket league simulator",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

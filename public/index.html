@@ -3,96 +3,84 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LPL Scorer - League Manager</title>
+    <title>Local Cricket League Simulator</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="topbar">
-      <h1>🏏 LPL Scorer</h1>
-      <p>Cricket league manager with teams, players, auction and game mode</p>
+    <header class="app-header">
+      <h1>🏏 Local Cricket League Simulator</h1>
+      <p>Node.js + Express + JSON | Fully local</p>
     </header>
 
-    <main class="layout">
-      <section class="card">
-        <h2>Team CRUD</h2>
-        <form id="teamForm" class="form-row">
-          <input id="teamName" placeholder="Team name" required />
+    <nav class="nav-tabs">
+      <button data-page="home" class="active">Home</button>
+      <button data-page="teams">Teams</button>
+      <button data-page="players">Players</button>
+      <button data-page="auction">Auction</button>
+      <button data-page="match">Match Simulation</button>
+      <button data-page="points">Points Table</button>
+    </nav>
+
+    <main>
+      <section id="page-home" class="page active">
+        <h2>Welcome</h2>
+        <p>Create teams and players, run auction, simulate matches, and generate a full round-robin table.</p>
+      </section>
+
+      <section id="page-teams" class="page">
+        <h2>Teams</h2>
+        <form id="team-form" class="card form-grid">
+          <input name="name" type="text" placeholder="Team name" required />
+          <input name="budget" type="number" min="1" value="100" required />
           <button type="submit">Create Team</button>
         </form>
-        <div id="teamsGrid" class="grid"></div>
+        <div id="teams-list" class="card"></div>
       </section>
 
-      <section class="card">
-        <h2>Player CRUD</h2>
-        <form id="playerForm" class="form-row wrap">
-          <input id="playerName" placeholder="Player name" required />
-          <input id="playerRole" placeholder="Role (RHB/LHB/Bowler)" required />
-          <input id="playerPower" type="number" min="1" max="100" placeholder="Power 1-100" required />
-          <input id="playerConsistency" type="number" min="1" max="100" placeholder="Consistency 1-100" required />
-          <select id="playerTeamId">
-            <option value="">Auction Pool</option>
+      <section id="page-players" class="page">
+        <h2>Players</h2>
+        <form id="player-form" class="card form-grid wide">
+          <input name="name" type="text" placeholder="Player name" required />
+          <select name="role" required>
+            <option value="batsman">Batsman</option>
+            <option value="bowler">Bowler</option>
+            <option value="all-rounder">All-Rounder</option>
           </select>
-          <button type="submit">Create Player</button>
+          <input name="basePrice" type="number" min="1" value="5" required />
+          <input name="aggression" type="number" min="0" max="10" value="5" required />
+          <input name="consistency" type="number" min="0" max="10" value="5" required />
+          <input name="economy" type="number" min="0" max="10" value="5" required />
+          <input name="wicketTaking" type="number" min="0" max="10" value="5" required />
+          <button type="submit">Add Player</button>
         </form>
-        <div id="playersGrid" class="grid"></div>
+        <div id="players-list" class="card"></div>
       </section>
 
-      <section class="card">
+      <section id="page-auction" class="page">
         <h2>Auction</h2>
-        <div id="auctionGrid" class="grid"></div>
+        <button id="run-auction">Run Auction Simulation</button>
+        <div id="auction-log" class="card log"></div>
       </section>
 
-      <section class="card">
-        <h2>Game Mode</h2>
-        <div class="form-row">
-          <select id="gameTeamSelect"></select>
-          <select id="gamePlayerSelect"></select>
-          <button id="startGameBtn">Start Match</button>
+      <section id="page-match" class="page">
+        <h2>Match Simulation (T20)</h2>
+        <div class="card form-grid">
+          <select id="team-a"></select>
+          <select id="team-b"></select>
+          <button id="run-match">Simulate Match</button>
         </div>
-        <p id="gameStatus" class="muted"></p>
+        <div id="match-result" class="card"></div>
+        <div id="match-commentary" class="card log"></div>
+      </section>
+
+      <section id="page-points" class="page">
+        <h2>Points Table (Round Robin)</h2>
+        <button id="run-league">Simulate League</button>
+        <div id="league-matches" class="card log"></div>
+        <div id="points-table" class="card"></div>
       </section>
     </main>
 
-    <template id="teamCardTemplate">
-      <article class="item-card">
-        <h3 class="name"></h3>
-        <p class="muted members"></p>
-        <div class="actions">
-          <button data-action="edit">Edit</button>
-          <button data-action="delete" class="danger">Delete</button>
-        </div>
-      </article>
-    </template>
-
-    <template id="playerCardTemplate">
-      <article class="item-card">
-        <h3 class="name"></h3>
-        <p class="muted meta"></p>
-        <p class="muted team"></p>
-        <div class="actions">
-          <button data-action="edit">Edit</button>
-          <button data-action="delete" class="danger">Delete</button>
-          <button data-action="release" class="warn">Release Player</button>
-        </div>
-      </article>
-    </template>
-
-    <template id="auctionCardTemplate">
-      <article class="item-card auction-card">
-        <h3 class="name"></h3>
-        <p class="muted ratings"></p>
-        <p class="muted bid"></p>
-        <div class="form-row wrap">
-          <select class="bid-team"></select>
-          <input class="bid-amount" type="number" min="1" placeholder="Bid amount" />
-        </div>
-        <div class="actions">
-          <button data-action="bid">Place Bid</button>
-          <button data-action="sold" class="success">Mark SOLD</button>
-        </div>
-      </article>
-    </template>
-
-    <script src="script.js"></script>
+    <script src="app.js"></script>
   </body>
 </html>

@@ -1,0 +1,25 @@
+{
+  "teamA": {
+    "name": "",
+    "players": []
+  },
+  "teamB": {
+    "name": "",
+    "players": []
+  },
+  "innings": {
+    "totalRuns": 0,
+    "wickets": 0,
+    "balls": 0,
+    "extras": 0,
+    "strikerIndex": 0,
+    "nonStrikerIndex": 1,
+    "nextBatterIndex": 2,
+    "overNumber": 0,
+    "batters": [],
+    "bowlers": [],
+    "currentBowlerIndex": 0,
+    "currentBowlerBallCount": 0
+  },
+  "events": []
+}
