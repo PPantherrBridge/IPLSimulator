@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LPL Scorer - Match</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Live Match Scoring</h1>
+      <a href="/" class="link-btn">← Back to Home</a>
+
+      <section class="panel score-board">
+        <h2 id="teamsTitle">Team A vs Team B</h2>
+        <div class="score-main">
+          <span id="scoreLine">0/0</span>
+          <span id="oversLine">Overs: 0.0</span>
+        </div>
+        <p id="extrasLine">Extras: 0</p>
+      </section>
+
+      <section class="panel">
+        <h3>Scoring Panel</h3>
+        <div class="button-grid">
+          <button data-action="0">0</button>
+          <button data-action="1">1</button>
+          <button data-action="2">2</button>
+          <button data-action="3">3</button>
+          <button data-action="4">4</button>
+          <button data-action="6">6</button>
+          <button data-action="W" class="danger">W</button>
+          <button data-action="WD">WD</button>
+          <button data-action="NB">NB</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h3>Batting Scorecard</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Batter</th>
+              <th>Runs</th>
+              <th>Balls</th>
+              <th>SR</th>
+            </tr>
+          </thead>
+          <tbody id="battingTableBody"></tbody>
+        </table>
+      </section>
+
+      <section class="panel">
+        <h3>Bowling Scorecard</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Bowler</th>
+              <th>Overs</th>
+              <th>Runs</th>
+              <th>Wkts</th>
+              <th>Econ</th>
+            </tr>
+          </thead>
+          <tbody id="bowlingTableBody"></tbody>
+        </table>
+      </section>
+
+      <section class="panel">
+        <h3>Recent Events</h3>
+        <ul id="eventsList" class="events-list"></ul>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
