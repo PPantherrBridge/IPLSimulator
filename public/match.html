@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LPL Scorer - Match Mode</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="card">
+        <h1>Game Mode Selection</h1>
+        <p id="selection" class="muted"></p>
+        <a href="/" class="muted">← Back to Dashboard</a>
+      </section>
+    </main>
+    <script>
+      const selection = JSON.parse(localStorage.getItem('lplGameMode') || 'null');
+      document.getElementById('selection').textContent = selection
+        ? `Team: ${selection.teamName} | Player: ${selection.playerName} | Selected: ${selection.selectedAt}`
+        : 'No game mode selection found. Please choose from dashboard.';
+    </script>
+  </body>
+</html>
