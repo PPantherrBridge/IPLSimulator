@@ -3,263 +3,479 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 const dataDir = path.join(__dirname, 'data');
-const teamsFile = path.join(dataDir, 'teams.json');
-const playersFile = path.join(dataDir, 'players.json');
+const files = {
+  teams: path.join(dataDir, 'teams.json'),
+  players: path.join(dataDir, 'players.json'),
+  initialTeams: path.join(dataDir, 'initial_teams.json'),
+  initialPlayers: path.join(dataDir, 'initial_players.json'),
+  season: path.join(dataDir, 'season.json'),
+  trophies: path.join(dataDir, 'trophies.json')
+};
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-function readJson(filePath, fallback = []) {
-  if (!fs.existsSync(filePath)) return fallback;
-  return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+function ensureDir() {
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+}
+
+function readJson(filePath, fallback) {
+  ensureDir();
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, JSON.stringify(fallback, null, 2));
+    return fallback;
+  }
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
 function writeJson(filePath, data) {
+  ensureDir();
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 }
 
+function emptyStats() {
+  return {
+    batting: { runs: 0, balls: 0, fours: 0, sixes: 0, outs: 0 },
+    bowling: { balls: 0, runs: 0, wickets: 0, dots: 0, wides: 0, noballs: 0 },
+    fielding: { catches: 0, runouts: 0, stumpings: 0 }
+  };
+}
+
+function clampRating(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 50;
+  return Math.max(1, Math.min(100, Math.round(n)));
+}
+
 function getTeams() {
-  return readJson(teamsFile, []);
+  return readJson(files.teams, []);
 }
 
 function getPlayers() {
-  return readJson(playersFile, []);
+  return readJson(files.players, []);
 }
 
-function normalizeStat(n) {
-  return Math.max(0, Math.min(10, Number(n) || 0));
+function getSeason() {
+  return readJson(files.season, {
+    started: false,
+    completed: false,
+    schedule: [],
+    history: [],
+    pointsTable: []
+  });
 }
 
-function getBattingStrength(player) {
-  return normalizeStat(player.batting?.aggression) * 0.6 + normalizeStat(player.batting?.consistency) * 0.4;
+function getTrophies() {
+  return readJson(files.trophies, []);
 }
 
-function getBowlingStrength(player) {
-  return normalizeStat(player.bowling?.economy) * 0.5 + normalizeStat(player.bowling?.wicketTaking) * 0.5;
+function saveTeams(data) {
+  writeJson(files.teams, data);
 }
 
-function chooseOutcome(batStrength, bowlStrength) {
-  const pressure = (bowlStrength - batStrength) / 15;
-  const wicketChance = Math.min(0.32, Math.max(0.03, 0.06 + pressure * 0.2));
-  const dotChance = Math.min(0.42, Math.max(0.12, 0.2 + pressure * 0.2));
-  const fourChance = Math.min(0.32, Math.max(0.04, 0.12 + (batStrength - bowlStrength) * 0.02));
-  const sixChance = Math.min(0.2, Math.max(0.01, 0.05 + (batStrength - bowlStrength) * 0.015));
-
-  const r = Math.random();
-
-  if (r < wicketChance) return { runs: 0, wicket: true, text: 'WICKET!' };
-  if (r < wicketChance + dotChance) return { runs: 0, wicket: false, text: '0 run' };
-
-  const singlesWeight = 0.45;
-  const twosWeight = 0.18;
-  const threesWeight = 0.04;
-  const boundaryWeight = fourChance;
-  const sixWeight = sixChance;
-  const total = singlesWeight + twosWeight + threesWeight + boundaryWeight + sixWeight;
-  const roll = Math.random() * total;
-
-  if (roll < singlesWeight) return { runs: 1, wicket: false, text: '1 run' };
-  if (roll < singlesWeight + twosWeight) return { runs: 2, wicket: false, text: '2 runs' };
-  if (roll < singlesWeight + twosWeight + threesWeight) return { runs: 3, wicket: false, text: '3 runs' };
-  if (roll < singlesWeight + twosWeight + threesWeight + boundaryWeight) return { runs: 4, wicket: false, text: 'FOUR!' };
-  return { runs: 6, wicket: false, text: 'SIX!' };
+function savePlayers(data) {
+  writeJson(files.players, data);
 }
 
-function oversToString(balls) {
-  const overs = Math.floor(balls / 6);
-  const rem = balls % 6;
-  return `${overs}.${rem}`;
+function saveSeason(data) {
+  writeJson(files.season, data);
 }
 
-function pickTopBatsmen(teamPlayers, count = 7) {
-  return [...teamPlayers]
-    .sort((a, b) => getBattingStrength(b) - getBattingStrength(a))
-    .slice(0, count);
+function saveTrophies(data) {
+  writeJson(files.trophies, data);
 }
 
-function pickTopBowlers(teamPlayers, count = 5) {
-  return [...teamPlayers]
-    .sort((a, b) => getBowlingStrength(b) - getBowlingStrength(a))
-    .slice(0, count);
+function nextId(list) {
+  return list.length ? Math.max(...list.map((x) => x.id)) + 1 : 1;
 }
 
-function simulateInnings(battingTeam, bowlingTeam, target = null) {
-  const battingLineup = pickTopBatsmen(battingTeam.squad, Math.min(11, battingTeam.squad.length));
-  const bowlers = pickTopBowlers(bowlingTeam.squad, Math.min(5, bowlingTeam.squad.length));
+function syncTeamReferences(teams, players) {
+  const teamMap = new Map(teams.map((t) => [t.id, t]));
+  teams.forEach((t) => {
+    t.playerIds = [];
+    if (!t.matchesPlayedAgainst) t.matchesPlayedAgainst = {};
+  });
 
-  if (battingLineup.length < 2 || bowlers.length < 1) {
-    return {
-      totalRuns: 0,
-      wickets: 0,
-      balls: 0,
-      overs: '0.0',
-      commentary: ['Not enough players to simulate innings.']
-    };
-  }
-
-  let strikerIndex = 0;
-  let nonStrikerIndex = 1;
-  let nextBatter = 2;
-
-  let runs = 0;
-  let wickets = 0;
-  let balls = 0;
-  const commentary = [];
-
-  for (let over = 0; over < 20; over++) {
-    const bowler = bowlers[over % bowlers.length];
-    commentary.push(`Over ${over + 1} - Bowler: ${bowler.name}`);
-
-    for (let ball = 0; ball < 6; ball++) {
-      if (wickets >= 10) break;
-
-      const striker = battingLineup[strikerIndex];
-      const batStrength = getBattingStrength(striker);
-      const bowlStrength = getBowlingStrength(bowler);
-      const outcome = chooseOutcome(batStrength, bowlStrength);
-
-      balls += 1;
-      runs += outcome.runs;
-
-      commentary.push(`${oversToString(balls)} ${striker.name} vs ${bowler.name}: ${outcome.text}`);
-
-      if (outcome.wicket) {
-        wickets += 1;
-        if (nextBatter < battingLineup.length) {
-          strikerIndex = nextBatter;
-          nextBatter += 1;
-        }
-      } else if (outcome.runs % 2 === 1) {
-        const temp = strikerIndex;
-        strikerIndex = nonStrikerIndex;
-        nonStrikerIndex = temp;
-      }
-
-      if (target !== null && runs > target) {
-        return {
-          totalRuns: runs,
-          wickets,
-          balls,
-          overs: oversToString(balls),
-          commentary
-        };
-      }
+  players.forEach((p) => {
+    if (p.teamId == null) {
+      p.teamId = null;
+      p.status = 'IN_AUCTION';
+      return;
     }
 
-    const temp = strikerIndex;
-    strikerIndex = nonStrikerIndex;
-    nonStrikerIndex = temp;
+    const team = teamMap.get(p.teamId);
+    if (!team) {
+      p.teamId = null;
+      p.status = 'IN_AUCTION';
+      return;
+    }
 
-    if (wickets >= 10) break;
-  }
-
-  return {
-    totalRuns: runs,
-    wickets,
-    balls,
-    overs: oversToString(balls),
-    commentary
-  };
+    p.status = 'IN_TEAM';
+    team.playerIds.push(p.id);
+  });
 }
 
-function simulateMatch(teamA, teamB) {
-  const tossWinner = Math.random() > 0.5 ? teamA : teamB;
-  const batsFirst = Math.random() > 0.5 ? tossWinner : tossWinner.id === teamA.id ? teamB : teamA;
-  const bowlsFirst = batsFirst.id === teamA.id ? teamB : teamA;
+function createSchedule(teams) {
+  const schedule = [];
+  let id = 1;
 
-  const innings1 = simulateInnings(batsFirst, bowlsFirst, null);
-  const innings2 = simulateInnings(bowlsFirst, batsFirst, innings1.totalRuns);
-
-  let winner;
-  let resultText;
-
-  if (innings2.totalRuns > innings1.totalRuns) {
-    winner = bowlsFirst.id;
-    const wicketsLeft = 10 - innings2.wickets;
-    resultText = `${bowlsFirst.name} won by ${wicketsLeft} wickets`;
-  } else if (innings2.totalRuns < innings1.totalRuns) {
-    winner = batsFirst.id;
-    const margin = innings1.totalRuns - innings2.totalRuns;
-    resultText = `${batsFirst.name} won by ${margin} runs`;
-  } else {
-    winner = null;
-    resultText = 'Match tied';
+  for (let i = 0; i < teams.length; i += 1) {
+    for (let j = i + 1; j < teams.length; j += 1) {
+      schedule.push({
+        id: id++,
+        teamA: teams[i].id,
+        teamB: teams[j].id,
+        played: false,
+        result: null
+      });
+    }
   }
 
-  return {
-    tossWinner: tossWinner.name,
-    batsFirst: batsFirst.name,
-    innings1: {
-      team: batsFirst.name,
-      ...innings1
-    },
-    innings2: {
-      team: bowlsFirst.name,
-      ...innings2
-    },
-    winner,
-    resultText,
-    commentary: [...innings1.commentary, '--- Innings Break ---', ...innings2.commentary]
-  };
+  return schedule;
 }
 
-function initTable(teams) {
+function defaultPointsTable(teams) {
   return teams.map((team) => ({
     teamId: team.id,
     teamName: team.name,
-    matches: 0,
+    matchesPlayed: 0,
     wins: 0,
     losses: 0,
     points: 0
   }));
 }
 
-function applyResult(table, teamAId, teamBId, winnerId) {
-  const rowA = table.find((r) => r.teamId === teamAId);
-  const rowB = table.find((r) => r.teamId === teamBId);
-  if (!rowA || !rowB) return;
+function weightedRandomScore() {
+  const r = Math.random();
 
-  rowA.matches += 1;
-  rowB.matches += 1;
-
-  if (winnerId === teamAId) {
-    rowA.wins += 1;
-    rowA.points += 2;
-    rowB.losses += 1;
-  } else if (winnerId === teamBId) {
-    rowB.wins += 1;
-    rowB.points += 2;
-    rowA.losses += 1;
-  } else {
-    rowA.points += 1;
-    rowB.points += 1;
-  }
+  if (r < 0.55) return rand(120, 180);
+  if (r < 0.88) return rand(181, 260);
+  if (r < 0.96) return rand(261, 320);
+  if (r < 0.988) return rand(321, 349);
+  if (r < 0.998) return rand(350, 399);
+  return 400;
 }
+
+function rand(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function teamStrength(teamId, players) {
+  const squad = players.filter((p) => p.teamId === teamId);
+  if (!squad.length) return 50;
+
+  const avgPower = squad.reduce((sum, p) => sum + p.power, 0) / squad.length;
+  const avgConsistency = squad.reduce((sum, p) => sum + p.consistency, 0) / squad.length;
+  return avgPower * 0.6 + avgConsistency * 0.4;
+}
+
+function buildInningsScore(strength) {
+  const base = weightedRandomScore();
+  const score = Math.min(400, Math.round(base + strength / 12));
+  const wickets = rand(3, 10);
+  const overs = wickets === 10 ? `${rand(12, 19)}.${rand(0, 5)}` : '20.0';
+
+  return { runs: score, wickets, overs };
+}
+
+function getTeamName(teams, teamId) {
+  return teams.find((t) => t.id === teamId)?.name || `Team ${teamId}`;
+}
+
+function recordMatchResult(match, winnerId, scoreA, scoreB) {
+  const teams = getTeams();
+  const season = getSeason();
+
+  const pointsA = season.pointsTable.find((row) => row.teamId === match.teamA);
+  const pointsB = season.pointsTable.find((row) => row.teamId === match.teamB);
+
+  if (!pointsA || !pointsB) {
+    return { error: 'Points table rows not found.' };
+  }
+
+  pointsA.matchesPlayed += 1;
+  pointsB.matchesPlayed += 1;
+
+  if (winnerId === match.teamA) {
+    pointsA.wins += 1;
+    pointsA.points += 2;
+    pointsB.losses += 1;
+  } else {
+    pointsB.wins += 1;
+    pointsB.points += 2;
+    pointsA.losses += 1;
+  }
+
+  const teamAObj = teams.find((t) => t.id === match.teamA);
+  const teamBObj = teams.find((t) => t.id === match.teamB);
+  teamAObj.matchesPlayedAgainst[match.teamB] = (teamAObj.matchesPlayedAgainst[match.teamB] || 0) + 1;
+  teamBObj.matchesPlayedAgainst[match.teamA] = (teamBObj.matchesPlayedAgainst[match.teamA] || 0) + 1;
+
+  const seasonMatch = season.schedule.find((m) => m.id === match.id);
+  seasonMatch.played = true;
+  seasonMatch.result = {
+    winner: winnerId,
+    scoreA,
+    scoreB
+  };
+
+  season.history.push({
+    id: season.history.length ? Math.max(...season.history.map((x) => x.id)) + 1 : 1,
+    teamA: match.teamA,
+    teamB: match.teamB,
+    winner: winnerId,
+    scoreA,
+    scoreB,
+    date: new Date().toISOString()
+  });
+
+  saveTeams(teams);
+  saveSeason(season);
+
+  return { season, teams };
+}
+
+app.get('/api/bootstrap', (req, res) => {
+  const teams = getTeams();
+  const players = getPlayers();
+  const season = getSeason();
+  const trophies = getTrophies();
+
+  syncTeamReferences(teams, players);
+  saveTeams(teams);
+  savePlayers(players);
+
+  res.json({ teams, players, season, trophies });
+});
+
+app.post('/api/season/start', (req, res) => {
+  const teams = getTeams();
+  const season = {
+    started: true,
+    completed: false,
+    schedule: createSchedule(teams),
+    history: [],
+    pointsTable: defaultPointsTable(teams)
+  };
+
+  teams.forEach((team) => {
+    team.matchesPlayedAgainst = {};
+  });
+
+  saveTeams(teams);
+  saveSeason(season);
+  res.json(season);
+});
+
+app.post('/api/matches/:id/simulate', (req, res) => {
+  const matchId = Number(req.params.id);
+  const { userTeamId } = req.body;
+
+  const season = getSeason();
+  const match = season.schedule.find((m) => m.id === matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found.' });
+  if (match.played) return res.status(400).json({ error: 'Match already played.' });
+  if (Number(userTeamId) === match.teamA || Number(userTeamId) === match.teamB) {
+    return res.status(400).json({ error: 'User team match must be entered manually.' });
+  }
+
+  const players = getPlayers();
+  const strengthA = teamStrength(match.teamA, players);
+  const strengthB = teamStrength(match.teamB, players);
+
+  const scoreA = buildInningsScore(strengthA);
+  const scoreB = buildInningsScore(strengthB);
+  const winner = scoreA.runs >= scoreB.runs ? match.teamA : match.teamB;
+
+  const recorded = recordMatchResult(match, winner, scoreA, scoreB);
+  if (recorded.error) return res.status(400).json({ error: recorded.error });
+
+  res.json({ matchId, winner, scoreA, scoreB });
+});
+
+app.post('/api/matches/:id/manual', (req, res) => {
+  const matchId = Number(req.params.id);
+  const { winner, scoreA, scoreB, playerStats } = req.body;
+
+  const season = getSeason();
+  const match = season.schedule.find((m) => m.id === matchId);
+  if (!match) return res.status(404).json({ error: 'Match not found.' });
+  if (match.played) return res.status(400).json({ error: 'Match already played.' });
+  if (![match.teamA, match.teamB].includes(Number(winner))) {
+    return res.status(400).json({ error: 'Winner must be one of the two teams.' });
+  }
+
+  const safeScoreA = {
+    runs: Number(scoreA?.runs) || 0,
+    wickets: Number(scoreA?.wickets) || 0,
+    overs: String(scoreA?.overs || '20.0')
+  };
+  const safeScoreB = {
+    runs: Number(scoreB?.runs) || 0,
+    wickets: Number(scoreB?.wickets) || 0,
+    overs: String(scoreB?.overs || '20.0')
+  };
+
+  const recorded = recordMatchResult(match, Number(winner), safeScoreA, safeScoreB);
+  if (recorded.error) return res.status(400).json({ error: recorded.error });
+
+  if (Array.isArray(playerStats) && playerStats.length) {
+    const players = getPlayers();
+    playerStats.forEach((entry) => {
+      const player = players.find((p) => p.id === Number(entry.playerId));
+      if (!player) return;
+
+      if (entry.batting) {
+        player.stats.batting.runs += Number(entry.batting.runs) || 0;
+        player.stats.batting.balls += Number(entry.batting.balls) || 0;
+        player.stats.batting.fours += Number(entry.batting.fours) || 0;
+        player.stats.batting.sixes += Number(entry.batting.sixes) || 0;
+        player.stats.batting.outs += Number(entry.batting.outs) || 0;
+      }
+    });
+    savePlayers(players);
+  }
+
+  res.json({ matchId, winner: Number(winner), scoreA: safeScoreA, scoreB: safeScoreB });
+});
+
+app.post('/api/season/complete', (req, res) => {
+  const { playerOfLeague, captain } = req.body;
+  const season = getSeason();
+  if (!season.started) return res.status(400).json({ error: 'Season not started.' });
+  if (season.schedule.some((m) => !m.played)) {
+    return res.status(400).json({ error: 'All matches must be completed first.' });
+  }
+
+  const sorted = [...season.pointsTable].sort((a, b) => b.points - a.points || b.wins - a.wins);
+  const champion = sorted[0];
+  if (!champion) return res.status(400).json({ error: 'No champion found.' });
+
+  const trophies = getTrophies();
+  const existing = trophies.find((t) => t.teamName === champion.teamName);
+  if (existing) {
+    existing.titles += 1;
+    existing.lastWinnerPlayer = String(playerOfLeague || 'Unknown');
+    existing.captain = String(captain || 'Unknown');
+  } else {
+    trophies.push({
+      teamName: champion.teamName,
+      titles: 1,
+      lastWinnerPlayer: String(playerOfLeague || 'Unknown'),
+      captain: String(captain || 'Unknown')
+    });
+  }
+
+  season.completed = true;
+  saveSeason(season);
+  saveTrophies(trophies);
+
+  res.json({ champion, trophies });
+});
+
+app.post('/api/season/reset', (req, res) => {
+  const initialTeams = readJson(files.initialTeams, []);
+  const initialPlayers = readJson(files.initialPlayers, []);
+
+  saveTeams(initialTeams);
+  savePlayers(initialPlayers);
+  saveSeason({
+    started: false,
+    completed: false,
+    schedule: [],
+    history: [],
+    pointsTable: []
+  });
+
+  res.json({ success: true });
+});
+
+app.post('/api/teams', (req, res) => {
+  const teams = getTeams();
+  const { name } = req.body;
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'Team name required.' });
+
+  const team = {
+    id: nextId(teams),
+    name: String(name).trim(),
+    playerIds: [],
+    matchesPlayedAgainst: {}
+  };
+  teams.push(team);
+  saveTeams(teams);
+  res.status(201).json(team);
+});
 
 app.get('/api/teams', (req, res) => {
   const teams = getTeams();
   res.json(teams);
 });
 
-app.post('/api/teams', (req, res) => {
+app.put('/api/teams/:id', (req, res) => {
   const teams = getTeams();
-  const { name, budget = 100 } = req.body;
+  const team = teams.find((t) => t.id === Number(req.params.id));
+  if (!team) return res.status(404).json({ error: 'Team not found.' });
+  if (!req.body.name || !String(req.body.name).trim()) return res.status(400).json({ error: 'Team name required.' });
 
-  if (!name) return res.status(400).json({ error: 'Team name is required' });
+  team.name = String(req.body.name).trim();
+  saveTeams(teams);
+  res.json(team);
+});
 
-  const team = {
-    id: teams.length ? Math.max(...teams.map((t) => t.id)) + 1 : 1,
-    name,
-    budget: Number(budget) || 100,
-    squad: []
+app.delete('/api/teams/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const teams = getTeams();
+  const players = getPlayers();
+  const index = teams.findIndex((t) => t.id === id);
+  if (index === -1) return res.status(404).json({ error: 'Team not found.' });
+
+  players.forEach((p) => {
+    if (p.teamId === id) {
+      p.teamId = null;
+      p.status = 'IN_AUCTION';
+      p.currentBid = 0;
+      p.currentBidTeamId = null;
+    }
+  });
+
+  teams.splice(index, 1);
+  syncTeamReferences(teams, players);
+  saveTeams(teams);
+  savePlayers(players);
+  res.json({ success: true });
+});
+
+app.post('/api/players', (req, res) => {
+  const players = getPlayers();
+  const teams = getTeams();
+  const { name, role, power, consistency, teamId = null } = req.body;
+
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'Player name required.' });
+  if (teamId !== null && teamId !== '' && !teams.some((t) => t.id === Number(teamId))) {
+    return res.status(400).json({ error: 'Invalid team.' });
+  }
+
+  const player = {
+    id: nextId(players),
+    name: String(name).trim(),
+    teamId: teamId === null || teamId === '' ? null : Number(teamId),
+    role: String(role || 'RHB').trim(),
+    power: clampRating(power),
+    consistency: clampRating(consistency),
+    status: teamId === null || teamId === '' ? 'IN_AUCTION' : 'IN_TEAM',
+    currentBid: 0,
+    currentBidTeamId: null,
+    stats: emptyStats()
   };
 
-  teams.push(team);
-  writeJson(teamsFile, teams);
-  res.status(201).json(team);
+  players.push(player);
+  syncTeamReferences(teams, players);
+  saveTeams(teams);
+  savePlayers(players);
+  res.status(201).json(player);
 });
 
 app.get('/api/players', (req, res) => {
@@ -267,151 +483,109 @@ app.get('/api/players', (req, res) => {
   res.json(players);
 });
 
-app.post('/api/players', (req, res) => {
-  const players = getPlayers();
-  const payload = req.body;
-
-  if (!payload.name || !payload.role) {
-    return res.status(400).json({ error: 'name and role are required' });
-  }
-
-  const player = {
-    id: players.length ? Math.max(...players.map((p) => p.id)) + 1 : 1,
-    name: payload.name,
-    role: payload.role,
-    basePrice: Number(payload.basePrice) || 1,
-    batting: {
-      aggression: normalizeStat(payload.batting?.aggression),
-      consistency: normalizeStat(payload.batting?.consistency)
-    },
-    bowling: {
-      economy: normalizeStat(payload.bowling?.economy),
-      wicketTaking: normalizeStat(payload.bowling?.wicketTaking)
-    }
-  };
-
-  players.push(player);
-  writeJson(playersFile, players);
-  res.status(201).json(player);
-});
-
 app.put('/api/players/:id', (req, res) => {
   const players = getPlayers();
-  const id = Number(req.params.id);
-  const idx = players.findIndex((p) => p.id === id);
-  if (idx === -1) return res.status(404).json({ error: 'Player not found' });
+  const teams = getTeams();
+  const player = players.find((p) => p.id === Number(req.params.id));
+  if (!player) return res.status(404).json({ error: 'Player not found.' });
 
-  const current = players[idx];
-  const payload = req.body;
+  if (req.body.name !== undefined) player.name = String(req.body.name).trim();
+  if (req.body.role !== undefined) player.role = String(req.body.role).trim();
+  if (req.body.power !== undefined) player.power = clampRating(req.body.power);
+  if (req.body.consistency !== undefined) player.consistency = clampRating(req.body.consistency);
 
-  players[idx] = {
-    ...current,
-    name: payload.name ?? current.name,
-    role: payload.role ?? current.role,
-    basePrice: payload.basePrice !== undefined ? Number(payload.basePrice) : current.basePrice,
-    batting: {
-      aggression: payload.batting?.aggression !== undefined ? normalizeStat(payload.batting.aggression) : current.batting.aggression,
-      consistency: payload.batting?.consistency !== undefined ? normalizeStat(payload.batting.consistency) : current.batting.consistency
-    },
-    bowling: {
-      economy: payload.bowling?.economy !== undefined ? normalizeStat(payload.bowling.economy) : current.bowling.economy,
-      wicketTaking: payload.bowling?.wicketTaking !== undefined ? normalizeStat(payload.bowling.wicketTaking) : current.bowling.wicketTaking
+  if (req.body.teamId !== undefined) {
+    if (req.body.teamId === null || req.body.teamId === '') {
+      player.teamId = null;
+      player.status = 'IN_AUCTION';
+      player.currentBid = 0;
+      player.currentBidTeamId = null;
+    } else {
+      const teamId = Number(req.body.teamId);
+      if (!teams.some((t) => t.id === teamId)) return res.status(400).json({ error: 'Invalid team.' });
+      player.teamId = teamId;
+      player.status = 'IN_TEAM';
     }
-  };
+  }
 
-  writeJson(playersFile, players);
-  res.json(players[idx]);
+  syncTeamReferences(teams, players);
+  saveTeams(teams);
+  savePlayers(players);
+  res.json(player);
 });
 
-app.post('/api/auction/simulate', (req, res) => {
+app.delete('/api/players/:id', (req, res) => {
+  const players = getPlayers();
+  const teams = getTeams();
+  const index = players.findIndex((p) => p.id === Number(req.params.id));
+  if (index === -1) return res.status(404).json({ error: 'Player not found.' });
+
+  players.splice(index, 1);
+  syncTeamReferences(teams, players);
+  saveTeams(teams);
+  savePlayers(players);
+  res.json({ success: true });
+});
+
+app.post('/api/teams/:teamId/release-player', (req, res) => {
+  const teamId = Number(req.params.teamId);
+  const playerId = Number(req.body.playerId);
   const teams = getTeams();
   const players = getPlayers();
 
-  const availablePlayers = players.filter((p) => !teams.some((t) => t.squad.some((sp) => sp.id === p.id)));
-  const log = [];
+  const player = players.find((p) => p.id === playerId);
+  if (!player || player.teamId !== teamId) return res.status(400).json({ error: 'Player not in this team.' });
 
-  for (const player of availablePlayers) {
-    const interestedTeams = teams.filter((team) => team.budget >= player.basePrice);
-    if (!interestedTeams.length) {
-      log.push(`No bids for ${player.name} (base ${player.basePrice})`);
-      continue;
-    }
+  player.teamId = null;
+  player.status = 'IN_AUCTION';
+  player.currentBid = 0;
+  player.currentBidTeamId = null;
 
-    const bidders = interestedTeams.filter((team) => {
-      const needsRole = team.squad.filter((p) => p.role === player.role).length < 4;
-      const randomInterest = Math.random() > 0.2;
-      return needsRole && randomInterest;
-    });
-
-    const activeBidders = bidders.length ? bidders : interestedTeams;
-
-    let bid = player.basePrice;
-    let highestTeam = activeBidders[Math.floor(Math.random() * activeBidders.length)];
-    log.push(`${player.name} starts at ${bid}`);
-
-    const rounds = Math.floor(Math.random() * 4) + 2;
-    for (let i = 0; i < rounds; i++) {
-      const challengers = activeBidders.filter((t) => t.id !== highestTeam.id && t.budget > bid);
-      if (!challengers.length) break;
-      const challenger = challengers[Math.floor(Math.random() * challengers.length)];
-      const increment = Math.floor(Math.random() * 4) + 1;
-      const newBid = Math.min(challenger.budget, bid + increment);
-      if (newBid <= bid) break;
-      bid = newBid;
-      highestTeam = challenger;
-      log.push(`${highestTeam.name} bids ${bid} for ${player.name}`);
-    }
-
-    highestTeam.budget -= bid;
-    highestTeam.squad.push(player);
-    log.push(`${highestTeam.name} wins ${player.name} for ${bid}`);
-  }
-
-  writeJson(teamsFile, teams);
-  res.json({ log, teams });
+  syncTeamReferences(teams, players);
+  saveTeams(teams);
+  savePlayers(players);
+  res.json(player);
 });
 
-app.post('/api/match/simulate', (req, res) => {
+app.post('/api/auction/bid', (req, res) => {
+  const { playerId, teamId, bid } = req.body;
+  const players = getPlayers();
   const teams = getTeams();
-  const { teamAId, teamBId } = req.body;
 
-  const teamA = teams.find((t) => t.id === Number(teamAId));
-  const teamB = teams.find((t) => t.id === Number(teamBId));
+  const player = players.find((p) => p.id === Number(playerId));
+  const team = teams.find((t) => t.id === Number(teamId));
+  const safeBid = Number(bid);
 
-  if (!teamA || !teamB) {
-    return res.status(400).json({ error: 'Select valid teams' });
-  }
+  if (!player || !team) return res.status(404).json({ error: 'Player or team not found.' });
+  if (player.status !== 'IN_AUCTION') return res.status(400).json({ error: 'Player not in auction.' });
+  if (!Number.isFinite(safeBid) || safeBid <= player.currentBid) return res.status(400).json({ error: 'Bid too low.' });
 
-  const simulated = simulateMatch(teamA, teamB);
-  res.json(simulated);
+  player.currentBid = safeBid;
+  player.currentBidTeamId = team.id;
+  savePlayers(players);
+  res.json(player);
 });
 
-app.post('/api/league/simulate', (req, res) => {
+app.post('/api/auction/sold', (req, res) => {
+  const { playerId } = req.body;
+  const players = getPlayers();
   const teams = getTeams();
+  const player = players.find((p) => p.id === Number(playerId));
 
-  if (teams.length < 2) {
-    return res.status(400).json({ error: 'Need at least 2 teams' });
-  }
+  if (!player) return res.status(404).json({ error: 'Player not found.' });
+  if (!player.currentBidTeamId) return res.status(400).json({ error: 'No active bid.' });
 
-  const table = initTable(teams);
-  const matches = [];
+  player.teamId = player.currentBidTeamId;
+  player.status = 'IN_TEAM';
+  player.currentBid = 0;
+  player.currentBidTeamId = null;
 
-  for (let i = 0; i < teams.length; i++) {
-    for (let j = i + 1; j < teams.length; j++) {
-      const result = simulateMatch(teams[i], teams[j]);
-      matches.push({
-        teamA: teams[i].name,
-        teamB: teams[j].name,
-        result: result.resultText
-      });
-      applyResult(table, teams[i].id, teams[j].id, result.winner);
-    }
-  }
-
-  table.sort((a, b) => b.points - a.points || b.wins - a.wins || a.teamName.localeCompare(b.teamName));
-  res.json({ matches, table });
+  syncTeamReferences(teams, players);
+  saveTeams(teams);
+  savePlayers(players);
+  res.json(player);
 });
 
 app.listen(PORT, () => {
-  console.log(`IPL Simulator running locally at http://localhost:${PORT}`);
+  console.log(`LPL Scorer listening on ${PORT}`);
 });

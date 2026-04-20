@@ -1,45 +1,45 @@
-# LPL Scorer
+# LPL Scorer - Hybrid League Simulation
 
-LPL Scorer is a simple web-based cricket scoring application built with **Node.js + Express + HTML/CSS/Vanilla JavaScript** and local JSON storage.
+LPL Scorer is a Render-ready cricket league simulator with:
+- Team + player management
+- Auction system
+- Hybrid manual + automatic match results
+- Points table, history, trophies, and season reset
 
-It supports:
-- Team and player entry on the home page
-- Match creation (Team A vs Team B)
-- Live scoring buttons (`0,1,2,3,4,6,W,WD,NB`)
-- Automatic updates for score, wickets, overs
-- Batter strike rate and bowler economy updates
-- Local storage in `data/match.json`
+## Stack
+- Node.js + Express
+- HTML/CSS/Vanilla JS
+- JSON file storage only
 
-## Project Structure
+## Key Features
 
-- `server.js`
-- `package.json`
-- `public/`
-  - `index.html`
-  - `match.html`
-  - `styles.css`
-  - `script.js`
-- `data/`
-  - `match.json`
+### User Team Mode
+Select a **Team + Player** on the dashboard and save to localStorage as:
+```json
+{ "teamId": 1, "playerId": 7 }
+```
 
-## Run Locally
+### Hybrid Match Logic
+- If the user team is in the match: result is **manual input only**.
+- If user team is not in the match: match is **auto simulated** using weighted randomness and team strength.
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Start the server:
-   ```bash
-   npm start
-   ```
-3. Open in your browser:
-   ```
-   http://localhost:3000
-   ```
+### Season System
+- IPL-style round robin schedule
+- Team-to-team match tracking (`matchesPlayedAgainst`)
+- Points table (2 points per win)
+- Minimal match history storage
+- Season completion with Player of the League + Captain
+- Trophy history tracking
+- Full season reset while preserving trophy history
 
-## Render Deployment
-
-This app is ready for Render with no code changes:
+## Render Compatibility
 - Uses `process.env.PORT || 3000`
-- Start command is `node server.js`
-- Static files are served from `public/`
+- Start script is `npm start` (`node server.js`)
+- Express serves static files from `public`
+
+## Run
+```bash
+npm install
+npm start
+```
+Open: `http://localhost:3000`
