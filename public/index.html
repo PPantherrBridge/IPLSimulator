@@ -3,40 +3,84 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LPL Scorer - Create Match</title>
+    <title>Local Cricket League Simulator</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="container">
-      <h1>🏏 LPL Scorer</h1>
-      <p class="subtitle">Create Team A and Team B, then start scoring live.</p>
+    <header class="app-header">
+      <h1>🏏 Local Cricket League Simulator</h1>
+      <p>Node.js + Express + JSON | Fully local</p>
+    </header>
 
-      <section class="panel">
-        <h2>Create Match</h2>
-        <form id="createMatchForm" class="form-grid">
-          <label>
-            Team A Name
-            <input id="teamAName" required placeholder="Team A" />
-          </label>
-          <label>
-            Team B Name
-            <input id="teamBName" required placeholder="Team B" />
-          </label>
-          <label class="full-width">
-            Team A Players (comma separated)
-            <textarea id="teamAPlayers" rows="4" placeholder="Player 1, Player 2, Player 3" required></textarea>
-          </label>
-          <label class="full-width">
-            Team B Players (comma separated)
-            <textarea id="teamBPlayers" rows="4" placeholder="Player 1, Player 2, Player 3" required></textarea>
-          </label>
-          <button type="submit" class="full-width">Create Match</button>
-        </form>
+    <nav class="nav-tabs">
+      <button data-page="home" class="active">Home</button>
+      <button data-page="teams">Teams</button>
+      <button data-page="players">Players</button>
+      <button data-page="auction">Auction</button>
+      <button data-page="match">Match Simulation</button>
+      <button data-page="points">Points Table</button>
+    </nav>
+
+    <main>
+      <section id="page-home" class="page active">
+        <h2>Welcome</h2>
+        <p>Create teams and players, run auction, simulate matches, and generate a full round-robin table.</p>
       </section>
 
-      <p id="status" class="status"></p>
+      <section id="page-teams" class="page">
+        <h2>Teams</h2>
+        <form id="team-form" class="card form-grid">
+          <input name="name" type="text" placeholder="Team name" required />
+          <input name="budget" type="number" min="1" value="100" required />
+          <button type="submit">Create Team</button>
+        </form>
+        <div id="teams-list" class="card"></div>
+      </section>
+
+      <section id="page-players" class="page">
+        <h2>Players</h2>
+        <form id="player-form" class="card form-grid wide">
+          <input name="name" type="text" placeholder="Player name" required />
+          <select name="role" required>
+            <option value="batsman">Batsman</option>
+            <option value="bowler">Bowler</option>
+            <option value="all-rounder">All-Rounder</option>
+          </select>
+          <input name="basePrice" type="number" min="1" value="5" required />
+          <input name="aggression" type="number" min="0" max="10" value="5" required />
+          <input name="consistency" type="number" min="0" max="10" value="5" required />
+          <input name="economy" type="number" min="0" max="10" value="5" required />
+          <input name="wicketTaking" type="number" min="0" max="10" value="5" required />
+          <button type="submit">Add Player</button>
+        </form>
+        <div id="players-list" class="card"></div>
+      </section>
+
+      <section id="page-auction" class="page">
+        <h2>Auction</h2>
+        <button id="run-auction">Run Auction Simulation</button>
+        <div id="auction-log" class="card log"></div>
+      </section>
+
+      <section id="page-match" class="page">
+        <h2>Match Simulation (T20)</h2>
+        <div class="card form-grid">
+          <select id="team-a"></select>
+          <select id="team-b"></select>
+          <button id="run-match">Simulate Match</button>
+        </div>
+        <div id="match-result" class="card"></div>
+        <div id="match-commentary" class="card log"></div>
+      </section>
+
+      <section id="page-points" class="page">
+        <h2>Points Table (Round Robin)</h2>
+        <button id="run-league">Simulate League</button>
+        <div id="league-matches" class="card log"></div>
+        <div id="points-table" class="card"></div>
+      </section>
     </main>
 
-    <script src="script.js"></script>
+    <script src="app.js"></script>
   </body>
 </html>
