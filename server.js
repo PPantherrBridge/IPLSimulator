@@ -280,6 +280,11 @@ function simulateInnings(battingTeam, bowlingTeam, players, target = null) {
     bowlingStats
   };
 }
+function updateNrr(row) {
+  const forRate = row.oversFaced ? row.runsScored / row.oversFaced : 0;
+  const againstRate = row.oversBowled ? row.runsConceded / row.oversBowled : 0;
+  row.nrr = Number((forRate - againstRate).toFixed(3));
+}
 
 function buildBattingStats(lineup, totalRuns, totalBalls) {
   const active = lineup.slice(0, Math.min(11, lineup.length));
@@ -706,7 +711,7 @@ app.post('/api/teams/:teamId/release-player', (req, res) => {
 
   saveTeams(teams);
   savePlayers(players);
-  res.json(player);
+  res.status(201).json(player);
 });
 
 app.put('/api/players/:id', (req, res) => {
