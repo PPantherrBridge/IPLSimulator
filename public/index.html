@@ -3,42 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LPL Scorer | Cricket League Simulator</title>
+    <title>LPL Scorer</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="topbar card">
+    <header class="card topbar">
       <div>
         <h1>🏏 LPL Scorer</h1>
-        <p class="muted">Auction-driven cricket league simulator</p>
+        <p class="muted">Live Auction + Squad + Scorecards</p>
       </div>
       <div class="row wrap">
+        <select id="userTeamSelect"></select>
+        <button id="startAuctionBtn" class="success">Start Auction</button>
+        <button id="endAuctionBtn" class="warn">End Auction</button>
+        <button id="skipAuctionBtn" class="warn">Skip Auction</button>
         <button id="startSeasonBtn">Start Season</button>
         <button id="resetSeasonBtn" class="danger">Reset Season</button>
       </div>
     </header>
 
     <main class="container">
-      <section class="card" id="dashboard">
-        <h2>Dashboard</h2>
-        <div id="dashboardStats" class="dashboard-grid"></div>
-      </section>
+      <section class="card"><div id="dashboardStats" class="dashboard-grid"></div></section>
 
       <nav class="tabs" id="tabs">
         <button data-tab="teams" class="active">Teams</button>
         <button data-tab="auction">Auction</button>
         <button data-tab="matches">Matches</button>
         <button data-tab="points">Points Table</button>
+        <button data-tab="scorecards">Scorecards</button>
+        <button data-tab="awards">Awards</button>
         <button data-tab="history">History</button>
-        <button data-tab="trophies">Trophies</button>
       </nav>
 
-      <section class="tab-panel active" id="tab-teams">
+      <section id="tab-teams" class="tab-panel active">
         <div class="card">
           <h3>Add Team</h3>
           <form id="teamCreateForm" class="row wrap">
             <input id="newTeamName" placeholder="Team name" required />
-            <input id="newTeamPurse" type="number" placeholder="Purse" value="10000000" />
+            <input id="newTeamPurse" type="number" value="10000000" placeholder="Purse" />
             <button type="submit">Add Team</button>
           </form>
         </div>
@@ -47,12 +49,11 @@
           <form id="playerCreateForm" class="row wrap">
             <input id="newPlayerName" placeholder="Player name" required />
             <select id="newPlayerBattingStyle"><option>LHB</option><option selected>RHB</option></select>
-            <select id="newPlayerRole">
-              <option>Batter</option><option>Bowler</option><option>All-Rounder</option><option>Wicketkeeper</option>
-            </select>
-            <input id="newPlayerBowlingType" placeholder="Bowling type (optional)" />
+            <select id="newPlayerRole"><option>Batter</option><option>Bowler</option><option>All-Rounder</option><option>Wicketkeeper</option></select>
+            <input id="newPlayerBowlingType" placeholder="Bowling type" />
             <input id="newPlayerPower" type="number" min="1" max="100" placeholder="Power" required />
             <input id="newPlayerConsistency" type="number" min="1" max="100" placeholder="Consistency" required />
+            <input id="newPlayerBasePrice" type="number" min="100000" placeholder="Base Price" required />
             <select id="newPlayerTeam"><option value="">Auction Pool</option></select>
             <button type="submit">Add Player</button>
           </form>
@@ -60,38 +61,30 @@
         <div id="teamsGrid" class="grid"></div>
       </section>
 
-      <section class="tab-panel" id="tab-auction">
-        <div class="card row wrap">
-          <button id="startAuctionBtn" class="success">Start Auction</button>
-          <span id="auctionStatus" class="muted"></span>
+      <section id="tab-auction" class="tab-panel">
+        <div class="card live-card">
+          <h3>Live Auction</h3>
+          <p id="auctionStatus" class="muted"></p>
+          <div id="currentAuctionPlayer"></div>
+          <div class="row wrap">
+            <button data-bid="100000">Bid +100k</button>
+            <button data-bid="500000">Bid +500k</button>
+            <button id="skipPlayerBtn" class="warn">Skip Player</button>
+          </div>
+          <h4>Bid History</h4>
+          <ul id="bidHistory"></ul>
         </div>
-        <div id="auctionGrid" class="grid"></div>
-      </section>
-
-      <section class="tab-panel" id="tab-matches"><div id="matchesGrid" class="grid"></div></section>
-
-      <section class="tab-panel" id="tab-points">
         <div class="card">
-          <table>
-            <thead><tr><th>Team</th><th>MP</th><th>W</th><th>L</th><th>Pts</th><th>NRR</th></tr></thead>
-            <tbody id="pointsBody"></tbody>
-          </table>
+          <h4>Team Purses</h4>
+          <div id="purseGrid" class="grid"></div>
         </div>
       </section>
 
-      <section class="tab-panel" id="tab-history"><div id="historyGrid" class="grid"></div></section>
-
-      <section class="tab-panel" id="tab-trophies">
-        <div class="card">
-          <h3>Complete Season</h3>
-          <form id="completeSeasonForm" class="row wrap">
-            <input id="playerOfLeague" placeholder="Player of League" required />
-            <input id="captainName" placeholder="Captain" required />
-            <button type="submit">Complete Season</button>
-          </form>
-        </div>
-        <div class="card"><table><thead><tr><th>Team</th><th>Titles</th><th>Last Winner Player</th><th>Captain</th></tr></thead><tbody id="trophiesBody"></tbody></table></div>
-      </section>
+      <section id="tab-matches" class="tab-panel"><div id="matchesGrid" class="grid"></div></section>
+      <section id="tab-points" class="tab-panel"><div class="card"><table><thead><tr><th>Team</th><th>MP</th><th>W</th><th>L</th><th>Pts</th><th>NRR</th></tr></thead><tbody id="pointsBody"></tbody></table></div></section>
+      <section id="tab-scorecards" class="tab-panel"><div id="scorecardsGrid" class="grid"></div></section>
+      <section id="tab-awards" class="tab-panel"><div id="awardsCard" class="card"></div></section>
+      <section id="tab-history" class="tab-panel"><div id="historyGrid" class="grid"></div></section>
     </main>
 
     <script src="script.js"></script>
