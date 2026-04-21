@@ -10,7 +10,7 @@
     <header class="card topbar">
       <div>
         <h1>🏏 LPL Scorer</h1>
-        <p class="muted">Live Auction + Squad + Scorecards</p>
+        <p class="muted">Season + Live Auction + Attribute Engine</p>
       </div>
       <div class="row wrap">
         <select id="userTeamSelect"></select>
@@ -37,22 +37,17 @@
 
       <section id="tab-teams" class="tab-panel active">
         <div class="card">
-          <h3>Add Team</h3>
-          <form id="teamCreateForm" class="row wrap">
-            <input id="newTeamName" placeholder="Team name" required />
-            <input id="newTeamPurse" type="number" value="10000000" placeholder="Purse" />
-            <button type="submit">Add Team</button>
-          </form>
-        </div>
-        <div class="card">
           <h3>Add Player</h3>
           <form id="playerCreateForm" class="row wrap">
-            <input id="newPlayerName" placeholder="Player name" required />
-            <select id="newPlayerBattingStyle"><option>LHB</option><option selected>RHB</option></select>
-            <select id="newPlayerRole"><option>Batter</option><option>Bowler</option><option>All-Rounder</option><option>Wicketkeeper</option></select>
-            <input id="newPlayerBowlingType" placeholder="Bowling type" />
-            <input id="newPlayerPower" type="number" min="1" max="100" placeholder="Power" required />
-            <input id="newPlayerConsistency" type="number" min="1" max="100" placeholder="Consistency" required />
+            <input id="newPlayerName" placeholder="Name" required />
+            <select id="newPlayerHand"><option>RHB</option><option>LHB</option><option>AMB</option></select>
+            <select id="newPlayerRole"><option>BATTER</option><option>BOWLER</option><option>ALL_ROUNDER</option><option>WICKETKEEPER</option></select>
+            <input id="newPlayerBowlingType" placeholder="Bowling Type" />
+            <input id="newPlayerP" type="number" min="1" max="100" placeholder="P" required />
+            <input id="newPlayerC" type="number" min="1" max="100" placeholder="C" required />
+            <input id="newPlayerPP" type="number" min="1" max="100" placeholder="PP" required />
+            <input id="newPlayerDO" type="number" min="1" max="100" placeholder="DO" required />
+            <input id="newPlayerCL" type="number" min="1" max="100" placeholder="CL" required />
             <input id="newPlayerBasePrice" type="number" min="100000" placeholder="Base Price" required />
             <select id="newPlayerTeam"><option value="">Auction Pool</option></select>
             <button type="submit">Add Player</button>
@@ -74,10 +69,7 @@
           <h4>Bid History</h4>
           <ul id="bidHistory"></ul>
         </div>
-        <div class="card">
-          <h4>Team Purses</h4>
-          <div id="purseGrid" class="grid"></div>
-        </div>
+        <div class="card"><h4>Team Purses</h4><div id="purseGrid" class="grid"></div></div>
       </section>
 
       <section id="tab-matches" class="tab-panel"><div id="matchesGrid" class="grid"></div></section>

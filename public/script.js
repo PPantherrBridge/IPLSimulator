@@ -4,7 +4,7 @@ let auctionTimer = null;
 const $ = (id) => document.getElementById(id);
 const teamName = (id) => state.teams.find((t) => t.id === id)?.name || `Team ${id}`;
 const playerById = (id) => state.players.find((p) => p.id === id);
-const roleText = (p) => `${p.battingStyle} - ${p.role}${p.bowlingType ? ` (${p.bowlingType})` : ''}`;
+const roleText = (p) => `${p.hand} - ${p.role}${p.bowlingType && p.bowlingType !== 'NONE' ? ` (${p.bowlingType})` : ''}`;
 
 async function api(url, options = {}) {
   const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
@@ -12,6 +12,8 @@ async function api(url, options = {}) {
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
+
+function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 
 function bindTabs() {
   document.querySelectorAll('#tabs button').forEach((btn) => {
@@ -25,13 +27,12 @@ function bindTabs() {
 }
 
 function renderDashboard() {
-  const auction = state.season.auction || {};
   $('dashboardStats').innerHTML = [
     ['Teams', state.teams.length],
     ['Players', state.players.length],
     ['Auction Pool', state.players.filter((p) => p.status === 'IN_AUCTION').length],
-    ['Auction', auction.status || 'NA'],
-    ['Matches', `${state.season.schedule?.filter((m) => m.played).length || 0}/${state.season.schedule?.length || 0}`]
+    ['Auction', state.season.auction?.status || 'NA'],
+    ['Season', state.season.started ? 'Running' : 'Not Started']
   ].map(([k, v]) => `<div class="stat"><div class="muted">${k}</div><strong>${v}</strong></div>`).join('');
 }
 
@@ -47,46 +48,15 @@ function renderTeams() {
   const grid = $('teamsGrid');
   grid.innerHTML = '';
   state.teams.forEach((team) => {
-    const xi = team.playingXI.map((id) => playerById(id)).filter(Boolean);
-    const bench = team.bench.map((id) => playerById(id)).filter(Boolean);
+    const squad = team.playerIds.map((id) => playerById(id)).filter(Boolean);
     const card = document.createElement('article');
     card.className = 'card';
     card.innerHTML = `
       <h3>${team.name}</h3>
-      <p class="muted">Purse: ₹${team.purse.toLocaleString()} | Squad: ${team.playerIds.length}</p>
-      <h4>Playing XI (${team.playingXI.length})</h4>
-      ${xi.map((p) => `<div class="stat">${p.name} <span class="role-pill">${roleText(p)}</span> <button data-to-bench="${team.id}:${p.id}" class="warn">To Bench</button></div>`).join('') || '<p class="muted">No XI</p>'}
-      <h4>Bench (${team.bench.length})</h4>
-      ${bench.map((p) => `<div class="stat">${p.name} <span class="role-pill">${roleText(p)}</span> <button data-to-xi="${team.id}:${p.id}">To XI</button> <button data-release="${team.id}:${p.id}" class="danger">Release</button></div>`).join('') || '<p class="muted">No bench</p>'}
+      <p class="muted">Purse: ₹${team.purse.toLocaleString()} | Squad: ${squad.length}</p>
+      ${squad.map((p) => `<div class="stat"><strong>${p.name}</strong> <span class="role-pill">${roleText(p)}</span><br/>P:${p.p} C:${p.c} PP:${p.pp} DO:${p.do} CL:${p.cl}<br/><button data-edit="${p.id}">Edit</button> <button data-release="${team.id}:${p.id}" class="danger">Release</button></div>`).join('') || '<p class="muted">No players</p>'}
     `;
     grid.appendChild(card);
-  });
-
-  document.querySelectorAll('[data-to-xi]').forEach((btn) => {
-    btn.onclick = async () => {
-      const [teamIdStr, playerIdStr] = btn.dataset.toXi.split(':');
-      const teamId = Number(teamIdStr);
-      const playerId = Number(playerIdStr);
-      const team = state.teams.find((t) => t.id === teamId);
-      const xi = [...team.playingXI];
-      if (xi.length < 11) xi.push(playerId);
-      else xi[10] = playerId;
-      await api(`/api/teams/${teamId}/lineup`, { method: 'POST', body: JSON.stringify({ playingXI: xi }) });
-      await refresh();
-    };
-  });
-
-  document.querySelectorAll('[data-to-bench]').forEach((btn) => {
-    btn.onclick = async () => {
-      const [teamIdStr, playerIdStr] = btn.dataset.toBench.split(':');
-      const teamId = Number(teamIdStr);
-      const playerId = Number(playerIdStr);
-      const team = state.teams.find((t) => t.id === teamId);
-      const xi = team.playingXI.filter((id) => id !== playerId);
-      if (team.bench.length) xi.push(team.bench[0]);
-      if (xi.length >= 11) await api(`/api/teams/${teamId}/lineup`, { method: 'POST', body: JSON.stringify({ playingXI: xi.slice(0, 11) }) });
-      await refresh();
-    };
   });
 
   document.querySelectorAll('[data-release]').forEach((btn) => {
@@ -96,33 +66,48 @@ function renderTeams() {
       await refresh();
     };
   });
-}
 
-function aiBidAttempt() {
-  const auction = state.season.auction;
-  if (auction.status !== 'RUNNING' || !auction.currentPlayerId) return;
-  const p = playerById(auction.currentPlayerId);
-  const aiTeams = state.teams.filter((t) => t.id !== Number(localStorage.getItem('userTeamId') || 0));
-
-  aiTeams.forEach(async (team) => {
-    const interest = p.power * 0.6 + p.consistency * 0.4 - (auction.currentBid / state.config.defaultPurse) * 100;
-    const aggression = rand(35, 90);
-    const chance = Math.min(90, Math.max(5, interest * 0.8 + aggression * 0.2));
-    const canAfford = team.purse >= auction.currentBid + auction.increment;
-    if (canAfford && Math.random() * 100 < chance * 0.12) {
-      const bid = auction.currentBid + auction.increment;
-      try { await api('/api/auction/bid', { method: 'POST', body: JSON.stringify({ teamId: team.id, amount: bid }) }); await refresh(); } catch (e) {}
-    }
+  document.querySelectorAll('[data-edit]').forEach((btn) => {
+    btn.onclick = async () => {
+      const player = playerById(Number(btn.dataset.edit));
+      const name = prompt('Name', player.name);
+      if (!name) return;
+      const p = Number(prompt('P (1-100)', player.p));
+      const c = Number(prompt('C (1-100)', player.c));
+      const pp = Number(prompt('PP (1-100)', player.pp));
+      const doVal = Number(prompt('DO (1-100)', player.do));
+      const cl = Number(prompt('CL (1-100)', player.cl));
+      await api(`/api/players/${player.id}`, { method: 'PUT', body: JSON.stringify({ name, p, c, pp, do: doVal, cl }) });
+      await refresh();
+    };
   });
 }
 
-function startAuctionCountdown() {
+async function aiBidAttempt() {
+  const a = state.season.auction;
+  if (a.status !== 'RUNNING' || !a.currentPlayerId) return;
+  const player = playerById(a.currentPlayerId);
+  const userTeam = Number(localStorage.getItem('userTeamId') || 0);
+  const aiTeams = state.teams.filter((t) => t.id !== userTeam);
+
+  for (const t of aiTeams) {
+    const interest = (player.p * 0.6 + player.c * 0.4) - ((a.currentBid || player.basePrice) / state.config.defaultPurse) * 100;
+    const aggression = rand(25, 95);
+    const chance = Math.max(5, Math.min(90, interest + aggression * 0.2));
+    const next = (a.currentBid || player.basePrice) + a.increment;
+    if (t.purse >= next && Math.random() * 100 < chance * 0.12) {
+      try { await api('/api/auction/bid', { method: 'POST', body: JSON.stringify({ teamId: t.id, amount: next }) }); } catch (e) {}
+    }
+  }
+}
+
+function startAuctionTimer() {
   if (auctionTimer) clearInterval(auctionTimer);
   auctionTimer = setInterval(async () => {
     if (state.season.auction.status !== 'RUNNING') return;
     state.season.auction.timer -= 1;
     $('auctionStatus').textContent = `Status: RUNNING | Timer: ${state.season.auction.timer}s`;
-    aiBidAttempt();
+    await aiBidAttempt();
     if (state.season.auction.timer <= 0) {
       await api('/api/auction/finalize', { method: 'POST' });
       await refresh();
@@ -131,22 +116,22 @@ function startAuctionCountdown() {
 }
 
 function renderAuction() {
-  const auction = state.season.auction || {};
-  $('auctionStatus').textContent = `Status: ${auction.status || 'NA'} | Timer: ${auction.timer ?? '-'}s`;
+  const a = state.season.auction || {};
+  $('auctionStatus').textContent = `Status: ${a.status || 'NA'} | Timer: ${a.timer ?? '-'}s`;
+  const player = playerById(a.currentPlayerId);
 
-  const player = playerById(auction.currentPlayerId);
   $('currentAuctionPlayer').innerHTML = player ? `
     <div class="live-player">
       <h3>${player.name}</h3>
       <p><span class="role-pill">${roleText(player)}</span></p>
-      <p>P:${player.power} C:${player.consistency} | Base: ₹${player.basePrice.toLocaleString()}</p>
-      <p class="highlight">Current Bid: ₹${(auction.currentBid || player.basePrice).toLocaleString()} | Leader: ${auction.currentTeam ? teamName(auction.currentTeam) : 'No bids yet'}</p>
-    </div>` : '<p class="muted">No active player.</p>';
+      <p>P:${player.p} C:${player.c} | Base: ₹${player.basePrice.toLocaleString()}</p>
+      <p class="highlight">Current Bid: ₹${(a.currentBid || player.basePrice).toLocaleString()} | Leader: ${a.currentTeam ? teamName(a.currentTeam) : 'No bids'}</p>
+    </div>` : '<p class="muted">No active auction player.</p>';
 
-  $('bidHistory').innerHTML = (auction.bidHistory || []).map((x) => `<li>${teamName(x.teamId)} bid ₹${x.amount.toLocaleString()}</li>`).join('') || '<li>No bids yet.</li>';
+  $('bidHistory').innerHTML = (a.bidHistory || []).map((b) => `<li>${teamName(b.teamId)} bid ₹${b.amount.toLocaleString()}</li>`).join('') || '<li>No bids yet.</li>';
   $('purseGrid').innerHTML = state.teams.map((t) => `<div class="stat">${t.name}<br/><strong>₹${t.purse.toLocaleString()}</strong></div>`).join('');
 
-  if (auction.status === 'RUNNING') startAuctionCountdown();
+  if (a.status === 'RUNNING') startAuctionTimer();
   else if (auctionTimer) { clearInterval(auctionTimer); auctionTimer = null; }
 }
 
@@ -158,9 +143,9 @@ function renderMatches() {
     return;
   }
 
-  const userTeamId = Number(localStorage.getItem('userTeamId') || 0);
-  [...state.season.schedule].sort(() => Math.random() - 0.5).forEach((m) => {
-    const userMatch = [m.teamA, m.teamB].includes(userTeamId);
+  const userTeam = Number(localStorage.getItem('userTeamId') || 0);
+  state.season.schedule.forEach((m) => {
+    const userMatch = [m.teamA, m.teamB].includes(userTeam);
     const card = document.createElement('article');
     card.className = 'card';
     card.innerHTML = `<h3>${teamName(m.teamA)} vs ${teamName(m.teamB)}</h3><p>${m.played ? 'Completed' : 'Pending'}</p>${m.result ? `<p>${m.result.scoreA.runs}/${m.result.scoreA.wickets} (${m.result.scoreA.overs}) vs ${m.result.scoreB.runs}/${m.result.scoreB.wickets} (${m.result.scoreB.overs})</p>` : ''}`;
@@ -168,18 +153,17 @@ function renderMatches() {
     if (!m.played && !userMatch) {
       const b = document.createElement('button');
       b.textContent = 'Simulate';
-      b.onclick = async () => { await api(`/api/matches/${m.id}/simulate`, { method: 'POST', body: JSON.stringify({ userTeamId }) }); await refresh(); };
+      b.onclick = async () => { await api(`/api/matches/${m.id}/simulate`, { method: 'POST', body: JSON.stringify({ userTeamId: userTeam }) }); await refresh(); };
       card.appendChild(b);
     }
 
     if (!m.played && userMatch) {
       const form = document.createElement('div');
       form.innerHTML = `
-        <p class="muted">User Match Input</p>
-        <div class="row wrap"><input data-ra type="number" placeholder="Team A Runs"/><input data-wa type="number" placeholder="Wkts"/><input data-oa placeholder="Overs" value="20.0"/></div>
-        <div class="row wrap"><input data-rb type="number" placeholder="Team B Runs"/><input data-wb type="number" placeholder="Wkts"/><input data-ob placeholder="Overs" value="20.0"/></div>
-        <textarea data-bat rows="4" placeholder='Batting JSON [{"playerId":1,"runs":30,"balls":35}]'></textarea>
-        <textarea data-bowl rows="4" placeholder='Bowling JSON [{"playerId":2,"overs":"4.0","runsGiven":20,"wickets":2}]'></textarea>
+        <div class="row wrap"><input data-ra type="number" placeholder="Team A Runs"/><input data-wa type="number" placeholder="Wickets"/><input data-oa value="20.0"/></div>
+        <div class="row wrap"><input data-rb type="number" placeholder="Team B Runs"/><input data-wb type="number" placeholder="Wickets"/><input data-ob value="20.0"/></div>
+        <textarea data-bat rows="3" placeholder='Batting JSON'></textarea>
+        <textarea data-bowl rows="3" placeholder='Bowling JSON'></textarea>
         <button data-save>Enter Result</button>
       `;
       form.querySelector('[data-save]').onclick = async () => {
@@ -194,7 +178,6 @@ function renderMatches() {
       };
       card.appendChild(form);
     }
-
     grid.appendChild(card);
   });
 }
@@ -211,24 +194,19 @@ function renderScorecards() {
     <article class="card">
       <h3>${teamName(s.teamA)} vs ${teamName(s.teamB)}</h3>
       <p>${s.scoreA.runs}/${s.scoreA.wickets} (${s.scoreA.overs}) vs ${s.scoreB.runs}/${s.scoreB.wickets} (${s.scoreB.overs})</p>
-      <h4>Batting</h4>
-      <table><thead><tr><th>Player</th><th>Runs</th><th>Balls</th><th>SR</th></tr></thead><tbody>${s.battingStats.map((b) => `<tr><td>${playerById(b.playerId)?.name || b.playerId}</td><td>${b.runs}</td><td>${b.balls}</td><td>${b.balls ? ((b.runs*100)/b.balls).toFixed(2) : '0.00'}</td></tr>`).join('')}</tbody></table>
-      <h4>Bowling</h4>
-      <table><thead><tr><th>Player</th><th>Overs</th><th>Runs</th><th>Wkts</th><th>Econ</th></tr></thead><tbody>${s.bowlingStats.map((b) => `<tr><td>${playerById(b.playerId)?.name || b.playerId}</td><td>${b.overs}</td><td>${b.runsGiven}</td><td>${b.wickets}</td><td>${(Number(b.runsGiven)/(Number(b.overs.split('.')[0]) + Number((b.overs.split('.')[1]||0))/6 || 1)).toFixed(2)}</td></tr>`).join('')}</tbody></table>
+      <table><thead><tr><th>Player</th><th>Runs</th><th>Balls</th><th>SR</th></tr></thead><tbody>${s.battingStats.map((b) => `<tr><td>${playerById(b.playerId)?.name || b.playerId}</td><td>${b.runs}</td><td>${b.balls}</td><td>${b.balls ? ((b.runs * 100) / b.balls).toFixed(2) : '0.00'}</td></tr>`).join('')}</tbody></table>
+      <table><thead><tr><th>Player</th><th>Overs</th><th>Runs</th><th>Wkts</th></tr></thead><tbody>${s.bowlingStats.map((b) => `<tr><td>${playerById(b.playerId)?.name || b.playerId}</td><td>${b.overs}</td><td>${b.runsGiven}</td><td>${b.wickets}</td></tr>`).join('')}</tbody></table>
     </article>
   `).join('') || '<div class="card"><p class="muted">No scorecards yet.</p></div>';
 }
 
 function renderAwards() {
   const a = state.season.awards;
-  if (!a) { $('awardsCard').innerHTML = '<p class="muted">Awards available after season completion.</p>'; return; }
-  $('awardsCard').innerHTML = `
-    <h3>Season Awards</h3>
-    <p><strong>Orange Cap:</strong> ${a.orangeCap?.name || 'NA'} (${a.orangeCap?.runs || 0} runs)</p>
-    <p><strong>Purple Cap:</strong> ${a.purpleCap?.name || 'NA'} (${a.purpleCap?.wickets || 0} wickets)</p>
-    <p><strong>MVP:</strong> ${a.mvp?.name || 'NA'} (Score ${a.mvp?.score || 0})</p>
-    <p><strong>Best Strike Rate:</strong> ${a.bestStrikeRate?.name || 'NA'} (${a.bestStrikeRate?.strikeRate?.toFixed?.(2) || '0.00'})</p>
-    <p><strong>Best Economy:</strong> ${a.bestEconomy?.name || 'NA'} (${a.bestEconomy?.economy?.toFixed?.(2) || '0.00'})</p>
+  $('awardsCard').innerHTML = !a ? '<p class="muted">Awards will appear after season completion.</p>' : `
+    <h3>Awards</h3>
+    <p><strong>Orange Cap:</strong> ${a.orangeCap?.name || 'NA'} (${a.orangeCap?.totalRuns || 0})</p>
+    <p><strong>Purple Cap:</strong> ${a.purpleCap?.name || 'NA'} (${a.purpleCap?.wickets || 0})</p>
+    <p><strong>MVP:</strong> ${a.mvp?.name || 'NA'}</p>
   `;
 }
 
@@ -239,6 +217,7 @@ function renderHistory() {
 async function refresh() {
   const data = await api('/api/bootstrap');
   Object.assign(state, data);
+
   renderDashboard();
   fillSelectors();
   renderTeams();
@@ -249,22 +228,14 @@ async function refresh() {
   renderAwards();
   renderHistory();
 
-  const canStartSeason = ['COMPLETED', 'SKIPPED'].includes(state.season.auction?.status);
-  $('startSeasonBtn').disabled = !canStartSeason;
-  $('startSeasonBtn').style.display = state.season.started ? 'none' : 'inline-block';
+  const startBtn = $('startSeasonBtn');
+  const seasonStarted = state.season.started;
+  startBtn.disabled = seasonStarted;
+  startBtn.style.display = seasonStarted ? 'none' : 'inline-block';
 }
-
-function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 
 function bindActions() {
   $('userTeamSelect').onchange = () => localStorage.setItem('userTeamId', $('userTeamSelect').value || '');
-
-  $('teamCreateForm').onsubmit = async (e) => {
-    e.preventDefault();
-    await api('/api/teams', { method: 'POST', body: JSON.stringify({ name: $('newTeamName').value, purse: Number($('newTeamPurse').value) }) });
-    e.target.reset();
-    await refresh();
-  };
 
   $('playerCreateForm').onsubmit = async (e) => {
     e.preventDefault();
@@ -272,11 +243,14 @@ function bindActions() {
       method: 'POST',
       body: JSON.stringify({
         name: $('newPlayerName').value,
-        battingStyle: $('newPlayerBattingStyle').value,
+        hand: $('newPlayerHand').value,
         role: $('newPlayerRole').value,
-        bowlingType: $('newPlayerBowlingType').value || null,
-        power: Number($('newPlayerPower').value),
-        consistency: Number($('newPlayerConsistency').value),
+        bowlingType: $('newPlayerBowlingType').value || 'NONE',
+        p: Number($('newPlayerP').value),
+        c: Number($('newPlayerC').value),
+        pp: Number($('newPlayerPP').value),
+        do: Number($('newPlayerDO').value),
+        cl: Number($('newPlayerCL').value),
         basePrice: Number($('newPlayerBasePrice').value),
         teamId: $('newPlayerTeam').value || null
       })
@@ -295,8 +269,9 @@ function bindActions() {
   document.querySelectorAll('[data-bid]').forEach((btn) => {
     btn.onclick = async () => {
       const teamId = Number(localStorage.getItem('userTeamId') || 0);
-      if (!teamId) return alert('Select your user team first.');
-      const next = (state.season.auction.currentBid || playerById(state.season.auction.currentPlayerId)?.basePrice || 0) + Number(btn.dataset.bid);
+      if (!teamId) return alert('Select user team.');
+      const player = playerById(state.season.auction.currentPlayerId);
+      const next = (state.season.auction.currentBid || player?.basePrice || 0) + Number(btn.dataset.bid);
       await api('/api/auction/bid', { method: 'POST', body: JSON.stringify({ teamId, amount: next }) });
       await refresh();
     };
