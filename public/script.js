@@ -1,396 +1,203 @@
-const state = {
-  teams: [],
-  players: [],
-  season: { started: false, completed: false, schedule: [], history: [], pointsTable: [] },
-  trophies: []
-};
-
-function userMode() {
-  return JSON.parse(localStorage.getItem('lplUserMode') || '{}');
-}
+const state = { teams: [], players: [], season: {}, trophies: [], config: {} };
 
 async function api(url, options = {}) {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options
-  });
-
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
 
-function teamName(teamId) {
-  return state.teams.find((t) => t.id === teamId)?.name || `Team ${teamId}`;
-}
-
-function playerName(playerId) {
-  return state.players.find((p) => p.id === playerId)?.name || `Player ${playerId}`;
-}
+const $ = (id) => document.getElementById(id);
+const teamName = (id) => state.teams.find((t) => t.id === id)?.name || `Team ${id}`;
+const roleText = (p) => `${p.battingStyle} - ${p.role}${p.bowlingType ? ` (${p.bowlingType})` : ''}`;
 
 function bindTabs() {
-  const tabs = document.querySelectorAll('#tabs button');
-  tabs.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      tabs.forEach((b) => b.classList.remove('active'));
+  document.querySelectorAll('#tabs button').forEach((btn) => {
+    btn.onclick = () => {
+      document.querySelectorAll('#tabs button').forEach((b) => b.classList.remove('active'));
       document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
       btn.classList.add('active');
-      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
-    });
+      $(`tab-${btn.dataset.tab}`).classList.add('active');
+    };
   });
 }
 
-function fillTeamSelects() {
-  const userTeamSelect = document.getElementById('userTeamSelect');
-  const newPlayerTeam = document.getElementById('newPlayerTeam');
-
-  userTeamSelect.innerHTML = '<option value="">Select User Team</option>' +
-    state.teams.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
-
-  newPlayerTeam.innerHTML = '<option value="">Auction Pool</option>' +
-    state.teams.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+function renderDashboard() {
+  const played = state.season.schedule?.filter((m) => m.played).length || 0;
+  const total = state.season.schedule?.length || 0;
+  $('dashboardStats').innerHTML = [
+    ['Teams', state.teams.length],
+    ['Players', state.players.length],
+    ['Auction Pool', state.players.filter((p) => p.status === 'IN_AUCTION').length],
+    ['Matches', `${played}/${total}`]
+  ].map(([k, v]) => `<div class="stat"><div class="muted">${k}</div><strong>${v}</strong></div>`).join('');
 }
 
-function fillUserPlayers() {
-  const mode = userMode();
-  const userPlayerSelect = document.getElementById('userPlayerSelect');
-  const players = state.players.filter((p) => p.teamId === Number(mode.teamId));
-
-  userPlayerSelect.innerHTML = '<option value="">Select User Player</option>' +
-    players.map((p) => `<option value="${p.id}">${p.name}</option>`).join('');
-
-  if (mode.playerId) {
-    userPlayerSelect.value = String(mode.playerId);
-  }
+function fillCreateTeamSelect() {
+  $('newPlayerTeam').innerHTML = '<option value="">Auction Pool</option>' + state.teams.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
 }
 
 function renderTeams() {
-  const teamsGrid = document.getElementById('teamsGrid');
-  const teamTemplate = document.getElementById('teamCardTemplate');
-  const badgeTemplate = document.getElementById('playerBadgeTemplate');
-  teamsGrid.innerHTML = '';
-
+  const grid = $('teamsGrid');
+  grid.innerHTML = '';
   state.teams.forEach((team) => {
-    const node = teamTemplate.content.cloneNode(true);
-    node.querySelector('.team-name').textContent = team.name;
-    node.querySelector('.team-meta').textContent = `Players: ${team.playerIds.length}`;
+    const players = state.players.filter((p) => p.teamId === team.id);
+    const card = document.createElement('article');
+    card.className = 'card';
+    card.innerHTML = `
+      <h3>${team.name}</h3>
+      <p class="muted">Purse: ${team.purse.toLocaleString()} | Squad: ${players.length}</p>
+      ${players.map((p) => `<div class="stat"><strong>${p.name}</strong><br/><span class="role-pill">${roleText(p)}</span><br/>P:${p.power} C:${p.consistency} <button data-release="${p.id}" class="danger">Release</button></div>`).join('') || '<p class="muted">No players.</p>'}
+    `;
+    grid.appendChild(card);
+  });
 
-    node.querySelector('[data-action="edit"]').addEventListener('click', async () => {
-      const name = prompt('Edit team name', team.name);
-      if (!name) return;
-      await api(`/api/teams/${team.id}`, { method: 'PUT', body: JSON.stringify({ name }) });
+  document.querySelectorAll('[data-release]').forEach((btn) => {
+    btn.onclick = async () => {
+      const playerId = Number(btn.dataset.release);
+      const team = state.teams.find((t) => state.players.find((p) => p.id === playerId)?.teamId === t.id);
+      await api(`/api/teams/${team.id}/release-player`, { method: 'POST', body: JSON.stringify({ playerId }) });
       await refresh();
-    });
-
-    node.querySelector('[data-action="delete"]').addEventListener('click', async () => {
-      if (!confirm(`Delete ${team.name}?`)) return;
-      await api(`/api/teams/${team.id}`, { method: 'DELETE' });
-      await refresh();
-    });
-
-    const playersContainer = node.querySelector('.players-list');
-    const teamPlayers = state.players.filter((p) => p.teamId === team.id);
-    teamPlayers.forEach((player) => {
-      const badge = badgeTemplate.content.cloneNode(true);
-      badge.querySelector('.label').textContent = `${player.name} (${player.role}) P:${player.power} C:${player.consistency}`;
-
-      badge.querySelector('[data-action="edit"]').addEventListener('click', async () => {
-        const name = prompt('Player name', player.name);
-        if (!name) return;
-        const role = prompt('Role', player.role) || player.role;
-        const power = Number(prompt('Power (1-100)', player.power));
-        const consistency = Number(prompt('Consistency (1-100)', player.consistency));
-
-        await api(`/api/players/${player.id}`, {
-          method: 'PUT',
-          body: JSON.stringify({ name, role, power, consistency })
-        });
-        await refresh();
-      });
-
-      badge.querySelector('[data-action="release"]').addEventListener('click', async () => {
-        await api(`/api/teams/${team.id}/release-player`, {
-          method: 'POST',
-          body: JSON.stringify({ playerId: player.id })
-        });
-        await refresh();
-      });
-
-      badge.querySelector('[data-action="delete"]').addEventListener('click', async () => {
-        if (!confirm(`Delete ${player.name}?`)) return;
-        await api(`/api/players/${player.id}`, { method: 'DELETE' });
-        await refresh();
-      });
-
-      playersContainer.appendChild(badge);
-    });
-
-    teamsGrid.appendChild(node);
+    };
   });
 }
 
 function renderAuction() {
-  const auctionGrid = document.getElementById('auctionGrid');
-  const auctionTemplate = document.getElementById('auctionCardTemplate');
-  auctionGrid.innerHTML = '';
-
+  const grid = $('auctionGrid');
   const pool = state.players.filter((p) => p.status === 'IN_AUCTION');
+  $('auctionStatus').textContent = state.season.auction?.active
+    ? `Auction Active | Pool: ${pool.length}`
+    : `Auction Closed | Needs pool >= teams (${pool.length}/${state.teams.length})`;
+
+  grid.innerHTML = '';
   if (!pool.length) {
-    auctionGrid.innerHTML = '<div class="card"><p class="muted">No players in auction pool.</p></div>';
+    grid.innerHTML = '<div class="card"><p class="muted">No players in auction pool.</p></div>';
     return;
   }
 
   pool.forEach((player) => {
-    const node = auctionTemplate.content.cloneNode(true);
-    node.querySelector('.name').textContent = player.name;
-    node.querySelector('.ratings').textContent = `${player.role} | P:${player.power} C:${player.consistency}`;
-    node.querySelector('.bid').textContent = `Current Bid: ${player.currentBid || 0} | Team: ${player.currentBidTeamId ? teamName(player.currentBidTeamId) : '-'}`;
+    const card = document.createElement('article');
+    card.className = 'card';
+    card.innerHTML = `
+      <h3>${player.name}</h3>
+      <p><span class="role-pill">${roleText(player)}</span></p>
+      <p class="muted">Current Bid: ${player.currentBid || 0} (${player.currentBidTeamId ? teamName(player.currentBidTeamId) : 'No bidder'})</p>
+      <div class="row wrap">
+        <select data-team>
+          <option value="">Select Team</option>
+          ${state.teams.map((t) => `<option value="${t.id}">${t.name} (₹${t.purse.toLocaleString()})</option>`).join('')}
+        </select>
+        <input data-bid type="number" placeholder="Bid Amount" />
+        <button data-bid-btn>Bid</button>
+        <button data-sold-btn class="success">Mark Sold</button>
+      </div>`;
 
-    const teamSelect = node.querySelector('.bid-team');
-    teamSelect.innerHTML = '<option value="">Select Team</option>' +
-      state.teams.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
-
-    const bidValue = node.querySelector('.bid-value');
-
-    node.querySelector('[data-action="bid"]').addEventListener('click', async () => {
-      if (!teamSelect.value || !bidValue.value) {
-        alert('Select a team and bid value.');
-        return;
-      }
-
-      await api('/api/auction/bid', {
-        method: 'POST',
-        body: JSON.stringify({
-          playerId: player.id,
-          teamId: Number(teamSelect.value),
-          bid: Number(bidValue.value)
-        })
-      });
+    card.querySelector('[data-bid-btn]').onclick = async () => {
+      const teamId = Number(card.querySelector('[data-team]').value);
+      const bid = Number(card.querySelector('[data-bid]').value);
+      await api('/api/auction/bid', { method: 'POST', body: JSON.stringify({ playerId: player.id, teamId, bid }) });
       await refresh();
-    });
+    };
 
-    node.querySelector('[data-action="sold"]').addEventListener('click', async () => {
-      await api('/api/auction/sold', {
-        method: 'POST',
-        body: JSON.stringify({ playerId: player.id })
-      });
+    card.querySelector('[data-sold-btn]').onclick = async () => {
+      await api('/api/auction/sold', { method: 'POST', body: JSON.stringify({ playerId: player.id }) });
       await refresh();
-    });
+    };
 
-    auctionGrid.appendChild(node);
+    grid.appendChild(card);
   });
 }
 
-function renderMatches() {
-  const matchesGrid = document.getElementById('matchesGrid');
-  const template = document.getElementById('matchCardTemplate');
-  matchesGrid.innerHTML = '';
+function matchResultText(match) {
+  if (!match.result) return 'Pending';
+  const { scoreA, scoreB } = match.result;
+  return `${teamName(match.teamA)} ${scoreA.runs}/${scoreA.wickets} (${scoreA.overs}) vs ${teamName(match.teamB)} ${scoreB.runs}/${scoreB.wickets} (${scoreB.overs})`;
+}
 
+function renderMatches() {
+  const grid = $('matchesGrid');
+  grid.innerHTML = '';
   if (!state.season.started) {
-    matchesGrid.innerHTML = '<div class="card"><p class="muted">Season not started. Click "Start Season".</p></div>';
+    grid.innerHTML = '<div class="card"><p class="muted">Season not started.</p></div>';
     return;
   }
 
-  const mode = userMode();
-  state.season.schedule.forEach((match) => {
-    const node = template.content.cloneNode(true);
+  const shuffled = [...state.season.schedule].sort(() => Math.random() - 0.5);
+  const userTeamId = Number(localStorage.getItem('userTeamId') || '0');
 
-    const teamA = teamName(match.teamA);
-    const teamB = teamName(match.teamB);
-    node.querySelector('.match-title').textContent = `${teamA} vs ${teamB}`;
+  shuffled.forEach((match) => {
+    const userMatch = match.teamA === userTeamId || match.teamB === userTeamId;
+    const card = document.createElement('article');
+    card.className = 'card match-card';
+    card.innerHTML = `
+      <h3>${teamName(match.teamA)} vs ${teamName(match.teamB)}</h3>
+      <p class="muted">Status: ${match.played ? 'Completed' : 'Upcoming'}</p>
+      <p>${matchResultText(match)}</p>
+      ${match.result?.topBatters?.length ? `<p><strong>Top Batters:</strong> ${match.result.topBatters.map((b) => `${b.name} (${b.runs})`).join(', ')}</p>` : ''}
+      ${match.result?.topBowlers?.length ? `<p><strong>Top Bowlers:</strong> ${match.result.topBowlers.map((b) => `${b.name} (${b.wickets})`).join(', ')}</p>` : ''}
+      <div class="actions row wrap"></div>
+    `;
 
-    if (match.played && match.result) {
-      const winnerName = teamName(match.result.winner);
-      node.querySelector('.match-status').textContent = `Played | Winner: ${winnerName} | ${teamA} ${match.result.scoreA.runs}/${match.result.scoreA.wickets} (${match.result.scoreA.overs}) vs ${teamB} ${match.result.scoreB.runs}/${match.result.scoreB.wickets} (${match.result.scoreB.overs})`;
-      matchesGrid.appendChild(node);
-      return;
-    }
-
-    const userInvolved = Number(mode.teamId) === match.teamA || Number(mode.teamId) === match.teamB;
-    node.querySelector('.match-status').textContent = userInvolved
-      ? 'User team match: Enter result manually.'
-      : 'Auto simulation available.';
-
-    const autoArea = node.querySelector('.auto-area');
-    if (!userInvolved) {
+    const actions = card.querySelector('.actions');
+    if (!match.played && !userMatch) {
       const btn = document.createElement('button');
-      btn.textContent = 'Simulate Match';
-      btn.addEventListener('click', async () => {
-        await api(`/api/matches/${match.id}/simulate`, {
-          method: 'POST',
-          body: JSON.stringify({ userTeamId: Number(mode.teamId) || null })
-        });
-        await refresh();
-      });
-      autoArea.appendChild(btn);
-    } else {
-      node.querySelector('.manual-form').classList.remove('hidden');
-      const manualForm = node.querySelector('.manual-form');
-      const winner = manualForm.querySelector('.winner');
-      winner.innerHTML = `
-        <option value="${match.teamA}">${teamA}</option>
-        <option value="${match.teamB}">${teamB}</option>
-      `;
-
-      manualForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const scoreA = {
-          runs: Number(manualForm.querySelector('.runs-a').value),
-          wickets: Number(manualForm.querySelector('.wkts-a').value),
-          overs: manualForm.querySelector('.overs-a').value || '20.0'
-        };
-        const scoreB = {
-          runs: Number(manualForm.querySelector('.runs-b').value),
-          wickets: Number(manualForm.querySelector('.wkts-b').value),
-          overs: manualForm.querySelector('.overs-b').value || '20.0'
-        };
-
-        await api(`/api/matches/${match.id}/manual`, {
-          method: 'POST',
-          body: JSON.stringify({
-            winner: Number(winner.value),
-            scoreA,
-            scoreB,
-            playerStats: []
-          })
-        });
-        await refresh();
-      });
+      btn.textContent = 'Simulate';
+      btn.onclick = async () => { await api(`/api/matches/${match.id}/simulate`, { method: 'POST', body: JSON.stringify({ userTeamId }) }); await refresh(); };
+      actions.appendChild(btn);
     }
 
-    matchesGrid.appendChild(node);
+    if (!match.played && userMatch) {
+      const form = document.createElement('div');
+      form.innerHTML = `
+        <div class="card">
+          <h4>Enter Result (User Match)</h4>
+          <div class="row wrap"><label>Opponent:</label><select data-opp><option value="${match.teamA === userTeamId ? match.teamB : match.teamA}">${teamName(match.teamA === userTeamId ? match.teamB : match.teamA)}</option></select></div>
+          <p><strong>Team A (${teamName(match.teamA)})</strong></p>
+          <div class="row wrap"><input data-ra placeholder="Runs" type="number"/><input data-wa placeholder="Wickets" type="number"/><input data-oa placeholder="Overs"/></div>
+          <p><strong>Team B (${teamName(match.teamB)})</strong></p>
+          <div class="row wrap"><input data-rb placeholder="Runs" type="number"/><input data-wb placeholder="Wickets" type="number"/><input data-ob placeholder="Overs"/></div>
+          <div class="row wrap"><select data-override><option value="">Auto winner</option><option value="${match.teamA}">${teamName(match.teamA)}</option><option value="${match.teamB}">${teamName(match.teamB)}</option></select><button data-save>Enter Result</button></div>
+        </div>`;
+      form.querySelector('[data-save]').onclick = async () => {
+        const scoreA = { runs: Number(form.querySelector('[data-ra]').value), wickets: Number(form.querySelector('[data-wa]').value), overs: form.querySelector('[data-oa]').value || '20.0' };
+        const scoreB = { runs: Number(form.querySelector('[data-rb]').value), wickets: Number(form.querySelector('[data-wb]').value), overs: form.querySelector('[data-ob]').value || '20.0' };
+        const winnerOverride = form.querySelector('[data-override]').value || null;
+        await api(`/api/matches/${match.id}/manual`, { method: 'POST', body: JSON.stringify({ scoreA, scoreB, winnerOverride }) });
+        await refresh();
+      };
+      card.appendChild(form);
+    }
+
+    grid.appendChild(card);
   });
 }
 
 function renderPoints() {
-  const body = document.getElementById('pointsBody');
-  body.innerHTML = '';
-  const rows = [...state.season.pointsTable].sort((a, b) => b.points - a.points || b.wins - a.wins);
-
-  rows.forEach((row) => {
-    body.innerHTML += `<tr>
-      <td>${row.teamName}</td>
-      <td>${row.matchesPlayed}</td>
-      <td>${row.wins}</td>
-      <td>${row.losses}</td>
-      <td>${row.points}</td>
-    </tr>`;
-  });
+  const rows = [...(state.season.pointsTable || [])].sort((a, b) => b.points - a.points || b.nrr - a.nrr);
+  $('pointsBody').innerHTML = rows.map((r) => `<tr><td>${r.teamName}</td><td>${r.matchesPlayed}</td><td>${r.wins}</td><td>${r.losses}</td><td>${r.points}</td><td>${r.nrr.toFixed(3)}</td></tr>`).join('');
 }
 
 function renderHistory() {
-  const body = document.getElementById('historyBody');
-  body.innerHTML = '';
-
-  state.season.history.forEach((item) => {
-    body.innerHTML += `<tr>
-      <td>${item.id}</td>
-      <td>${teamName(item.teamA)} vs ${teamName(item.teamB)}</td>
-      <td>${teamName(item.winner)}</td>
-      <td>${item.scoreA.runs}/${item.scoreA.wickets} & ${item.scoreB.runs}/${item.scoreB.wickets}</td>
-      <td>${new Date(item.date).toLocaleString()}</td>
-    </tr>`;
-  });
+  $('historyGrid').innerHTML = (state.season.history || []).map((h) => `
+    <article class="card">
+      <h3>${teamName(h.teamA)} vs ${teamName(h.teamB)}</h3>
+      <p class="muted">Winner: ${teamName(h.winner)} | ${new Date(h.date).toLocaleString()}</p>
+      <p>${h.scoreA.runs}/${h.scoreA.wickets} (${h.scoreA.overs}) vs ${h.scoreB.runs}/${h.scoreB.wickets} (${h.scoreB.overs})</p>
+      <p><strong>Top Batters:</strong> ${(h.topBatters || []).map((b) => `${b.name} ${b.runs}`).join(', ') || 'NA'}</p>
+      <p><strong>Top Bowlers:</strong> ${(h.topBowlers || []).map((b) => `${b.name} ${b.wickets}`).join(', ') || 'NA'}</p>
+    </article>`).join('') || '<div class="card"><p class="muted">No match history yet.</p></div>';
 }
 
 function renderTrophies() {
-  const body = document.getElementById('trophiesBody');
-  body.innerHTML = '';
-
-  state.trophies.forEach((trophy) => {
-    body.innerHTML += `<tr>
-      <td>${trophy.teamName}</td>
-      <td>${trophy.titles}</td>
-      <td>${trophy.lastWinnerPlayer}</td>
-      <td>${trophy.captain}</td>
-    </tr>`;
-  });
-}
-
-function bindActions() {
-  document.getElementById('startSeasonBtn').addEventListener('click', async () => {
-    await api('/api/season/start', { method: 'POST' });
-    await refresh();
-  });
-
-  document.getElementById('resetSeasonBtn').addEventListener('click', async () => {
-    if (!confirm('Reset season? This clears schedule, points and history.')) return;
-    await api('/api/season/reset', { method: 'POST' });
-    await refresh();
-  });
-
-  document.getElementById('saveUserModeBtn').addEventListener('click', () => {
-    const teamId = Number(document.getElementById('userTeamSelect').value);
-    const playerId = Number(document.getElementById('userPlayerSelect').value);
-
-    if (!teamId || !playerId) {
-      document.getElementById('userModeStatus').textContent = 'Select both team and player.';
-      return;
-    }
-
-    localStorage.setItem('lplUserMode', JSON.stringify({ teamId, playerId }));
-    document.getElementById('userModeStatus').textContent = `Saved: ${teamName(teamId)} - ${playerName(playerId)}`;
-  });
-
-  document.getElementById('userTeamSelect').addEventListener('change', () => {
-    const teamId = Number(document.getElementById('userTeamSelect').value);
-    const players = state.players.filter((p) => p.teamId === teamId);
-    const playerSelect = document.getElementById('userPlayerSelect');
-    playerSelect.innerHTML = '<option value="">Select User Player</option>' +
-      players.map((p) => `<option value="${p.id}">${p.name}</option>`).join('');
-  });
-
-  document.getElementById('teamCreateForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const name = document.getElementById('newTeamName').value.trim();
-    if (!name) return;
-    await api('/api/teams', { method: 'POST', body: JSON.stringify({ name }) });
-    event.target.reset();
-    await refresh();
-  });
-
-  document.getElementById('playerCreateForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-
-    await api('/api/players', {
-      method: 'POST',
-      body: JSON.stringify({
-        name: document.getElementById('newPlayerName').value.trim(),
-        role: document.getElementById('newPlayerRole').value.trim(),
-        power: Number(document.getElementById('newPlayerPower').value),
-        consistency: Number(document.getElementById('newPlayerConsistency').value),
-        teamId: document.getElementById('newPlayerTeam').value || null
-      })
-    });
-
-    event.target.reset();
-    await refresh();
-  });
-
-  document.getElementById('completeSeasonForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-
-    await api('/api/season/complete', {
-      method: 'POST',
-      body: JSON.stringify({
-        playerOfLeague: document.getElementById('playerOfLeague').value.trim(),
-        captain: document.getElementById('captainName').value.trim()
-      })
-    });
-
-    event.target.reset();
-    await refresh();
-  });
+  $('trophiesBody').innerHTML = (state.trophies || []).map((t) => `<tr><td>${t.teamName}</td><td>${t.titles}</td><td>${t.lastWinnerPlayer}</td><td>${t.captain}</td></tr>`).join('');
 }
 
 async function refresh() {
   const data = await api('/api/bootstrap');
-  state.teams = data.teams;
-  state.players = data.players;
-  state.season = data.season;
-  state.trophies = data.trophies;
+  Object.assign(state, data);
 
-  fillTeamSelects();
+  renderDashboard();
+  fillCreateTeamSelect();
   renderTeams();
   renderAuction();
   renderMatches();
@@ -398,25 +205,66 @@ async function refresh() {
   renderHistory();
   renderTrophies();
 
-  const mode = userMode();
-  if (mode.teamId) {
-    document.getElementById('userTeamSelect').value = String(mode.teamId);
-  }
-  fillUserPlayers();
+  $('startSeasonBtn').style.display = state.season.started ? 'none' : 'inline-block';
+}
 
-  if (mode.teamId && mode.playerId) {
-    document.getElementById('userModeStatus').textContent = `Saved: ${teamName(Number(mode.teamId))} - ${playerName(Number(mode.playerId))}`;
-  } else {
-    document.getElementById('userModeStatus').textContent = 'No user mode saved.';
-  }
+function bindActions() {
+  $('startAuctionBtn').onclick = async () => {
+    try { await api('/api/auction/start', { method: 'POST' }); await refresh(); } catch (e) { alert(e.message); }
+  };
+
+  $('startSeasonBtn').onclick = async () => {
+    await api('/api/season/start', { method: 'POST' });
+    await refresh();
+  };
+
+  $('resetSeasonBtn').onclick = async () => {
+    if (!confirm('Reset season only? Teams and auctions stay intact.')) return;
+    await api('/api/season/reset', { method: 'POST' });
+    await refresh();
+  };
+
+  $('teamCreateForm').onsubmit = async (e) => {
+    e.preventDefault();
+    await api('/api/teams', {
+      method: 'POST',
+      body: JSON.stringify({ name: $('newTeamName').value.trim(), purse: Number($('newTeamPurse').value) })
+    });
+    e.target.reset();
+    await refresh();
+  };
+
+  $('playerCreateForm').onsubmit = async (e) => {
+    e.preventDefault();
+    await api('/api/players', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: $('newPlayerName').value.trim(),
+        battingStyle: $('newPlayerBattingStyle').value,
+        role: $('newPlayerRole').value,
+        bowlingType: $('newPlayerBowlingType').value.trim() || null,
+        power: Number($('newPlayerPower').value),
+        consistency: Number($('newPlayerConsistency').value),
+        teamId: $('newPlayerTeam').value || null
+      })
+    });
+    e.target.reset();
+    await refresh();
+  };
+
+  $('completeSeasonForm').onsubmit = async (e) => {
+    e.preventDefault();
+    await api('/api/season/complete', {
+      method: 'POST',
+      body: JSON.stringify({ playerOfLeague: $('playerOfLeague').value, captain: $('captainName').value })
+    });
+    e.target.reset();
+    await refresh();
+  };
 }
 
 (async function init() {
-  try {
-    bindTabs();
-    bindActions();
-    await refresh();
-  } catch (error) {
-    alert(error.message);
-  }
+  bindTabs();
+  bindActions();
+  await refresh();
 })();

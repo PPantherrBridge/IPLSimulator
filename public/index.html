@@ -3,27 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LPL Scorer - League Simulator</title>
+    <title>LPL Scorer | Cricket League Simulator</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="topbar">
-      <h1>🏆 LPL Scorer League Simulator</h1>
-      <div class="top-actions">
+    <header class="topbar card">
+      <div>
+        <h1>🏏 LPL Scorer</h1>
+        <p class="muted">Auction-driven cricket league simulator</p>
+      </div>
+      <div class="row wrap">
         <button id="startSeasonBtn">Start Season</button>
         <button id="resetSeasonBtn" class="danger">Reset Season</button>
       </div>
     </header>
 
     <main class="container">
-      <section class="card" id="dashboardCard">
+      <section class="card" id="dashboard">
         <h2>Dashboard</h2>
-        <div class="row wrap">
-          <select id="userTeamSelect"></select>
-          <select id="userPlayerSelect"></select>
-          <button id="saveUserModeBtn">Save User Team Mode</button>
-        </div>
-        <p id="userModeStatus" class="muted"></p>
+        <div id="dashboardStats" class="dashboard-grid"></div>
       </section>
 
       <nav class="tabs" id="tabs">
@@ -37,137 +35,64 @@
 
       <section class="tab-panel active" id="tab-teams">
         <div class="card">
-          <h3>Create Team</h3>
-          <form id="teamCreateForm" class="row">
+          <h3>Add Team</h3>
+          <form id="teamCreateForm" class="row wrap">
             <input id="newTeamName" placeholder="Team name" required />
+            <input id="newTeamPurse" type="number" placeholder="Purse" value="10000000" />
             <button type="submit">Add Team</button>
           </form>
         </div>
-
         <div class="card">
-          <h3>Create Player</h3>
+          <h3>Add Player</h3>
           <form id="playerCreateForm" class="row wrap">
             <input id="newPlayerName" placeholder="Player name" required />
-            <input id="newPlayerRole" placeholder="Role" required />
-            <input id="newPlayerPower" type="number" min="1" max="100" placeholder="Power (1-100)" required />
-            <input id="newPlayerConsistency" type="number" min="1" max="100" placeholder="Consistency (1-100)" required />
-            <select id="newPlayerTeam">
-              <option value="">Auction Pool</option>
+            <select id="newPlayerBattingStyle"><option>LHB</option><option selected>RHB</option></select>
+            <select id="newPlayerRole">
+              <option>Batter</option><option>Bowler</option><option>All-Rounder</option><option>Wicketkeeper</option>
             </select>
+            <input id="newPlayerBowlingType" placeholder="Bowling type (optional)" />
+            <input id="newPlayerPower" type="number" min="1" max="100" placeholder="Power" required />
+            <input id="newPlayerConsistency" type="number" min="1" max="100" placeholder="Consistency" required />
+            <select id="newPlayerTeam"><option value="">Auction Pool</option></select>
             <button type="submit">Add Player</button>
           </form>
         </div>
-
         <div id="teamsGrid" class="grid"></div>
       </section>
 
       <section class="tab-panel" id="tab-auction">
+        <div class="card row wrap">
+          <button id="startAuctionBtn" class="success">Start Auction</button>
+          <span id="auctionStatus" class="muted"></span>
+        </div>
         <div id="auctionGrid" class="grid"></div>
       </section>
 
-      <section class="tab-panel" id="tab-matches">
-        <div id="matchesGrid" class="grid"></div>
-      </section>
+      <section class="tab-panel" id="tab-matches"><div id="matchesGrid" class="grid"></div></section>
 
       <section class="tab-panel" id="tab-points">
         <div class="card">
           <table>
-            <thead>
-              <tr><th>Team</th><th>MP</th><th>W</th><th>L</th><th>Pts</th></tr>
-            </thead>
+            <thead><tr><th>Team</th><th>MP</th><th>W</th><th>L</th><th>Pts</th><th>NRR</th></tr></thead>
             <tbody id="pointsBody"></tbody>
           </table>
         </div>
       </section>
 
-      <section class="tab-panel" id="tab-history">
-        <div class="card">
-          <table>
-            <thead>
-              <tr><th>ID</th><th>Match</th><th>Winner</th><th>Score</th><th>Date</th></tr>
-            </thead>
-            <tbody id="historyBody"></tbody>
-          </table>
-        </div>
-      </section>
+      <section class="tab-panel" id="tab-history"><div id="historyGrid" class="grid"></div></section>
 
       <section class="tab-panel" id="tab-trophies">
         <div class="card">
           <h3>Complete Season</h3>
           <form id="completeSeasonForm" class="row wrap">
-            <input id="playerOfLeague" placeholder="Player of the League" required />
-            <input id="captainName" placeholder="Captain Name" required />
+            <input id="playerOfLeague" placeholder="Player of League" required />
+            <input id="captainName" placeholder="Captain" required />
             <button type="submit">Complete Season</button>
           </form>
         </div>
-
-        <div class="card">
-          <table>
-            <thead>
-              <tr><th>Team</th><th>Titles</th><th>Last Winner Player</th><th>Captain</th></tr>
-            </thead>
-            <tbody id="trophiesBody"></tbody>
-          </table>
-        </div>
+        <div class="card"><table><thead><tr><th>Team</th><th>Titles</th><th>Last Winner Player</th><th>Captain</th></tr></thead><tbody id="trophiesBody"></tbody></table></div>
       </section>
     </main>
-
-    <template id="teamCardTemplate">
-      <article class="card team-card">
-        <h3 class="team-name"></h3>
-        <p class="muted team-meta"></p>
-        <div class="actions">
-          <button data-action="edit">Edit Team</button>
-          <button data-action="delete" class="danger">Delete Team</button>
-        </div>
-        <div class="players-list"></div>
-      </article>
-    </template>
-
-    <template id="playerBadgeTemplate">
-      <div class="player-badge">
-        <span class="label"></span>
-        <div class="actions">
-          <button data-action="edit">Edit</button>
-          <button data-action="release" class="warn">Release</button>
-          <button data-action="delete" class="danger">Delete</button>
-        </div>
-      </div>
-    </template>
-
-    <template id="auctionCardTemplate">
-      <article class="card">
-        <h3 class="name"></h3>
-        <p class="muted ratings"></p>
-        <p class="muted bid"></p>
-        <div class="row wrap">
-          <select class="bid-team"></select>
-          <input class="bid-value" type="number" min="1" placeholder="Bid amount" />
-          <button data-action="bid">Place Bid</button>
-          <button data-action="sold" class="success">Mark SOLD</button>
-        </div>
-      </article>
-    </template>
-
-    <template id="matchCardTemplate">
-      <article class="card">
-        <h3 class="match-title"></h3>
-        <p class="muted match-status"></p>
-        <div class="auto-area"></div>
-        <form class="manual-form hidden">
-          <div class="row wrap">
-            <select class="winner"></select>
-            <input class="runs-a" type="number" placeholder="Team A Runs" />
-            <input class="wkts-a" type="number" placeholder="Team A Wkts" />
-            <input class="overs-a" placeholder="Team A Overs" />
-            <input class="runs-b" type="number" placeholder="Team B Runs" />
-            <input class="wkts-b" type="number" placeholder="Team B Wkts" />
-            <input class="overs-b" placeholder="Team B Overs" />
-            <button type="submit">Save Manual Result</button>
-          </div>
-        </form>
-      </article>
-    </template>
 
     <script src="script.js"></script>
   </body>
